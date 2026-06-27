@@ -1,0 +1,51 @@
+{
+  "name": "optionlookup",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "@next-auth/prisma-adapter": "latest",
+    "@prisma/client": "^6",
+    "@radix-ui/react-label": "latest",
+    "@radix-ui/react-separator": "latest",
+    "@radix-ui/react-slot": "latest",
+    "bcryptjs": "latest",
+    "class-variance-authority": "latest",
+    "clsx": "latest",
+    "lucide-react": "latest",
+    "next": "15",
+    "next-auth": "4",
+    "next-themes": "latest",
+    "nodemailer": "^7.0.13",
+    "react": "18",
+    "react-dom": "18",
+    "recharts": "latest",
+    "sonner": "latest",
+    "stripe": "^22.2.1",
+    "tailwind-merge": "latest",
+    "tailwindcss-animate": "latest",
+    "yahoo-finance2": "latest"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "latest",
+    "@types/node": "latest",
+    "@types/nodemailer": "^8.0.1",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "autoprefixer": "latest",
+    "postcss": "latest",
+    "prisma": "^6",
+    "tailwindcss": "^3",
+    "tsx": "latest",
+    "typescript": "latest"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
+}

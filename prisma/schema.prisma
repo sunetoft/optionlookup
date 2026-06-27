@@ -1,0 +1,160 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          String    @default("FREE")  // FREE, PAID, ADMIN
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  accounts        Account[]
+  sessions        Session[]
+  bookmarks       Bookmark[]
+  analyses        AnalysisHistory[]
+  subscriptions   Subscription[]
+  importedStocks  ImportedStock[]
+  passwordResets  PasswordReset[]
+}
+
+model PasswordReset {
+  token     String   @id
+  userId    String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model ImportedStock {
+  id        String   @id @default(cuid())
+  userId    String
+  ticker    String
+  source    String   @default("tradescouter")
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, ticker, source])
+  @@index([userId])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Bookmark {
+  id        String   @id @default(cuid())
+  userId    String
+  ticker    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, ticker])
+  @@index([userId])
+}
+
+model AnalysisHistory {
+  id        String   @id @default(cuid())
+  userId    String?
+  ticker    String
+  data      String
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([ticker])
+}
+
+model Subscription {
+  id                     String   @id @default(cuid())
+  userId                 String
+  stripeCustomerId       String?  @unique
+  stripeSubscriptionId   String?  @unique
+  stripePriceId          String?
+  tier                   String   // MONTHLY, QUARTERLY, SEMI_ANNUAL, ANNUAL
+  status                 String   @default("ACTIVE") // ACTIVE, CANCELED, PAST_DUE, TRIALING
+  currentPeriodStart     DateTime?
+  currentPeriodEnd       DateTime?
+  cancelAtPeriodEnd      Boolean  @default(false)
+  renewalReminderSent    Boolean  @default(false)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+}
+
+model AnonymousUsage {
+  id              String    @id @default(cuid())
+  identifier      String    @unique  // IP address or fingerprint
+  lookupCount     Int       @default(0)
+  tickersLooked   String    @default("")  // comma-separated tickers
+  quarantinedUntil DateTime?
+  firstLookupAt   DateTime  @default(now())
+  lastLookupAt    DateTime  @default(now())
+
+  @@index([identifier])
+}
+
+model EmailLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  email     String
+  subject   String
+  type      String   // RENEWAL_REMINDER, WELCOME, QUARANTINE, CANCELLATION
+  sentAt    DateTime @default(now())
+  success   Boolean  @default(true)
+  error     String?
+
+  @@index([email])
+  @@index([type, sentAt])
+}
