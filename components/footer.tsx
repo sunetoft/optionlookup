@@ -5,6 +5,7 @@ export function Footer() {
     { label: 'ThemeInvestor', href: 'https://themeinvestor.bunnystocks.com' },
     { label: 'OptionLookup', href: 'https://optionlookup.bunnystocks.com' },
     { label: 'HoldSell', href: 'https://holdsell.bunnystocks.com' },
+    { label: 'TradeScouter', href: 'https://tradescouter.bunnystocks.com' },
   ];
 
   return (

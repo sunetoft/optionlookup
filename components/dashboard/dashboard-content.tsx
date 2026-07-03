@@ -179,7 +179,7 @@ export function DashboardContent() {
       // ── Rate limited — show paywall ──
       if (!res.ok && data?.error === 'RATE_LIMITED') {
         setShowPaywall(true);
-        setAnonAccess(prev => ({ ...prev, remaining: 0, allowed: false, quarantinedUntil: data.quarantinedUntil }));
+        setAnonAccess(prev => prev ? ({ ...prev, remaining: 0, allowed: false, quarantinedUntil: data.quarantinedUntil }) : null);
         toast.error('Free lookups exhausted. Sign up for unlimited access!');
         return;
       }

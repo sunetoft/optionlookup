@@ -3,10 +3,10 @@ const nextConfig = {
   serverExternalPackages: ['yahoo-finance2'],
   poweredByHeader: false,
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   eslint: {
-    ignoreDuringBuilds: true,
+    ignoreDuringBuilds: false,
   },
   async headers() {
     return [
@@ -16,7 +16,7 @@ const nextConfig = {
           {
             key: 'Content-Security-Policy',
             value:
-              "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https:; font-src 'self' data:; connect-src 'self' https://*.bunnystocks.com; frame-ancestors 'self'",
+              "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https:; font-src 'self' data:; connect-src 'self' https://*.bunnystocks.com; frame-src 'self' https://www.youtube.com https://youtube.com https://youtu.be; frame-ancestors 'self'",
           },
           {
             key: 'X-Content-Type-Options',
