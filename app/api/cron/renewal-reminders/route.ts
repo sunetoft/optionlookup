@@ -13,7 +13,10 @@ export async function POST(req: Request) {
   const authHeader = req.headers.get('authorization');
   const cronKey = process.env.CRON_API_KEY;
   
-  if (cronKey && authHeader !== `Bearer ${cronKey}`) {
+  // Fail-closed: if CRON_API_KEY is unset OR the header doesn't match, reject.
+  // (Previously used `cronKey && ...`, which skipped auth entirely when the env
+  // var was missing — allowing anyone to trigger bulk reminder emails.)
+  if (!cronKey || authHeader !== `Bearer ${cronKey}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

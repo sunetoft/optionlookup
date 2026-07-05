@@ -564,35 +564,6 @@ export function DashboardContent() {
           </FadeIn>
         )}
       </main>
-
-      {/* Footer */}
-      <footer className="border-t border-border mt-16">
-        <div className="max-w-[1200px] mx-auto px-4 py-6">
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>© 2026 OptionLookup. For educational purposes only.</span>
-            <span className="font-mono text-xs">Wheel Strategy Tool</span>
-          </div>
-          {/* Cross-site navigation */}
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t border-border/50 pt-4">
-            {[
-              { label: 'BunnyStocks', href: 'https://bunnystocks.com' },
-              { label: 'Warren', href: 'https://warren.bunnystocks.com' },
-              { label: 'ThemeInvestor', href: 'https://themeinvestor.bunnystocks.com' },
-              { label: 'OptionLookup', href: 'https://optionlookup.bunnystocks.com' },
-              { label: 'HoldSell', href: 'https://holdsell.bunnystocks.com' },
-              { label: 'TradeScouter', href: 'https://tradescouter.bunnystocks.com' },
-            ].map((site) => (
-              <a
-                key={site.href}
-                href={site.href}
-                className="text-xs text-muted-foreground transition-colors hover:text-foreground"
-              >
-                {site.label}
-              </a>
-            ))}
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
