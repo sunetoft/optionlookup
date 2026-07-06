@@ -10,7 +10,8 @@
 Wheel Strategy Analysis tool — helps options traders find, analyze, and track
 Cash-Secured Puts (CSP) and Covered Calls (CC). Calculates expected move,
 ROI per day on collateral, and filters strikes that meet the user's hard
-rules. Supports stock import from TradeScouter and bookmarking analyses.
+rules. Supports stock import from TradeScouter and Themeinvestor, plus bookmarking
+analyses.
 
 The user trades the wheel strategy via Saxo Bank (SaxoTraderGO) with strict
 rules: every trade must deliver ≥0.1% ROI per trading day on collateral,
@@ -40,6 +41,7 @@ and strikes must be OUTSIDE the Expected Move.
 | `CRON_API_KEY` | Auth token for cron endpoints |
 | `CROSS_SITE_API_KEY` | Shared secret for inter-app API calls |
 | `TRADESCOUTER_INTERNAL_URL` | `http://localhost:3013` |
+| `THEMEVALIDATOR_INTERNAL_URL` | `http://localhost:3001` |
 
 ## Database
 
@@ -89,7 +91,7 @@ Cannot purge CF cache via API. Always use `?nocache=TIMESTAMP` for verification.
 
 ```
 app/                    Next.js App Router
-  api/                  API routes (auth, external, tradescouter, cron, etc.)
+  api/                  API routes (auth, external, tradescouter, themeinvestor, cron, etc.)
   dashboard/            Main analysis dashboard
   account/              User account settings
   pricing/              Stripe pricing page
@@ -110,5 +112,19 @@ types/                  TypeScript type definitions
 ## Cross-App Dependencies
 
 - **TradeScouter** (`localhost:3013`): Receives stock imports, status sync
-- **ThemeValidator** (`localhost:3001`): Status sync
+- **ThemeValidator / Themeinvestor** (`localhost:3001`): Receives stock imports, status sync
 - All cross-site calls authenticated via `CROSS_SITE_API_KEY` shared secret
+
+### Imported Stocks (per-source)
+
+Stocks imported from external apps are stored in the `ImportedStock` model,
+tagged by `source` (`"tradescouter"` or `"themeinvestor"`). Each source has a
+parallel pair of internal API routes powering its dashboard card:
+
+| Source | Status check | Stock list/delete |
+|--------|--------------|-------------------|
+| TradeScouter | `GET /api/tradescouter/status` | `GET`/`DELETE /api/tradescouter/stocks` |
+| Themeinvestor | `GET /api/themeinvestor/status` | `GET`/`DELETE /api/themeinvestor/stocks` |
+
+External apps push/remove imports via the shared cross-site endpoint
+`POST`/`DELETE /api/external/import-stock` (pass `source` in the body).

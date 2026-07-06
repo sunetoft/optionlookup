@@ -42,7 +42,7 @@ model ImportedStock {
   id        String   @id @default(cuid())
   userId    String
   ticker    String
-  source    String   @default("tradescouter")
+  source    String   @default("tradescouter")  // "tradescouter" | "themeinvestor"
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -43,6 +43,8 @@ export function DashboardContent() {
   const [recentTickers, setRecentTickers] = useState<string[]>([]);
   const [tsRegistered, setTsRegistered] = useState(false);
   const [tsStocks, setTsStocks] = useState<string[]>([]);
+  const [tiRegistered, setTiRegistered] = useState(false);
+  const [tiStocks, setTiStocks] = useState<string[]>([]);
 
   // Anonymous rate-limit state
   const [anonAccess, setAnonAccess] = useState<AnonAccess | null>(null);
@@ -77,6 +79,7 @@ export function DashboardContent() {
       fetchBookmarks();
       fetchHistory();
       fetchTradescouterStatus();
+      fetchThemeinvestorStatus();
     }
   }, [status]);
 
@@ -145,6 +148,56 @@ export function DashboardContent() {
       });
       if (res.ok) {
         setTsStocks((prev) => prev.filter((t) => t !== ticker));
+        toast.success(`Removed ${ticker} from imported stocks`);
+      } else {
+        toast.error('Failed to remove stock');
+      }
+    } catch (e: any) {
+      console.error('Failed to remove imported stock:', e);
+      toast.error('Failed to remove stock');
+    }
+  };
+
+  const fetchThemeinvestorStatus = async () => {
+    try {
+      const res = await fetch('/api/themeinvestor/status');
+      if (res.ok) {
+        const data = await res.json();
+        const registered = !!data?.registered;
+        setTiRegistered(registered);
+        if (registered) {
+          fetchThemeinvestorStocks();
+        }
+      } else {
+        setTiRegistered(false);
+      }
+    } catch (e: any) {
+      console.error('Failed to fetch Themeinvestor status:', e);
+      setTiRegistered(false);
+    }
+  };
+
+  const fetchThemeinvestorStocks = async () => {
+    try {
+      const res = await fetch('/api/themeinvestor/stocks');
+      if (res.ok) {
+        const data = await res.json();
+        setTiStocks((data?.stocks ?? []) as string[]);
+      }
+    } catch (e: any) {
+      console.error('Failed to fetch imported stocks:', e);
+    }
+  };
+
+  const handleRemoveTiStock = async (ticker: string) => {
+    try {
+      const res = await fetch('/api/themeinvestor/stocks', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker }),
+      });
+      if (res.ok) {
+        setTiStocks((prev) => prev.filter((t) => t !== ticker));
         toast.success(`Removed ${ticker} from imported stocks`);
       } else {
         toast.error('Failed to remove stock');
@@ -473,6 +526,57 @@ export function DashboardContent() {
                   <ArrowDownToLine className="h-6 w-6 text-amber-500/50 mx-auto mb-2" />
                   <p className="text-sm text-muted-foreground">
                     No stocks imported yet. Add stocks from TradeScouter.
+                  </p>
+                </div>
+              )}
+            </div>
+          </FadeIn>
+        )}
+
+        {/* Stocks imported from Themeinvestor (authenticated only) */}
+        {!isAnonymous && tiRegistered && (
+          <FadeIn delay={0.25}>
+            <div className="mb-8 rounded-xl border border-violet-500/30 bg-violet-500/5 p-5">
+              <div className="flex items-center gap-2 mb-1">
+                <ArrowDownToLine className="h-4 w-4 text-violet-500" />
+                <h2 className="font-display text-base font-semibold tracking-tight">
+                  Stocks imported from Themeinvestor
+                </h2>
+              </div>
+              <p className="text-xs text-muted-foreground mb-4">
+                Click a ticker to analyze CSP opportunities
+              </p>
+              {(tiStocks?.length ?? 0) > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {(tiStocks ?? []).map((t: string) => (
+                    <div
+                      key={`ti-${t}`}
+                      className="inline-flex items-center rounded-md border border-violet-500/40 bg-transparent"
+                    >
+                      <button
+                        onClick={() => handleAnalyze(t)}
+                        className="font-mono text-xs gap-1.5 hover:bg-violet-500/10 hover:text-violet-600 dark:hover:text-violet-400 px-2.5 py-1.5 transition-colors"
+                      >
+                        <span className="inline-flex items-center rounded bg-violet-500/15 px-1 py-0.5 text-[10px] font-bold leading-none text-violet-600 dark:text-violet-400">
+                          TI
+                        </span>
+                        {t}
+                      </button>
+                      <button
+                        onClick={() => handleRemoveTiStock(t)}
+                        title={`Remove ${t}`}
+                        className="px-1.5 py-1.5 text-muted-foreground/50 hover:text-red-500 transition-colors border-l border-violet-500/40"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <ArrowDownToLine className="h-6 w-6 text-violet-500/50 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">
+                    No stocks imported yet. Add stocks from Themeinvestor.
                   </p>
                 </div>
               )}
