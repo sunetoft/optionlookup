@@ -10,7 +10,7 @@ export async function GET() {
   }
 
   const history = await prisma.analysisHistory.findMany({
-    where: { userId: (session.user as any).id },
+    where: { userId: session.user.id },
     orderBy: { createdAt: 'desc' },
     take: 20,
     select: {
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
 
     const entry = await prisma.analysisHistory.create({
       data: {
-        userId: (session.user as any).id,
+        userId: session.user.id,
         ticker: ticker.toUpperCase(),
         data: data ?? {},
       },

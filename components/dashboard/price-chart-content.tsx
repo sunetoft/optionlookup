@@ -13,13 +13,13 @@ interface PriceChartContentProps {
 
 // Distinct colors for up to 4 expected moves (2 weekly + 2 monthly)
 const EM_COLORS = [
-  '#10b981', // emerald-500
-  '#8b5cf6', // violet-500
-  '#3b82f6', // blue-500
-  '#f97316', // orange-500
+  'hsl(var(--chart-3))', // red/terracotta
+  'hsl(var(--chart-4))', // deep blue
+  'hsl(var(--chart-5))', // amber/gold
+  'hsl(var(--chart-2))', // teal
 ];
 
-const TIMESFM_COLOR = '#8b5cf6'; // violet-500
+const TIMESFM_COLOR = 'hsl(var(--chart-4))'; // deep blue
 
 export function PriceChartContent({ priceHistory, expectedMoves, currentPrice, timesfmEm }: PriceChartContentProps) {
   const data = (priceHistory ?? []).map((d: any) => ({
@@ -64,7 +64,7 @@ export function PriceChartContent({ priceHistory, expectedMoves, currentPrice, t
             <div className="flex items-center gap-1.5">
               <span
                 className="inline-block w-4 h-3 rounded-sm border"
-                style={{ borderColor: TIMESFM_COLOR, backgroundColor: `${TIMESFM_COLOR}20` }}
+                style={{ borderColor: TIMESFM_COLOR, backgroundColor: 'hsl(var(--chart-4) / 0.12)' }}
               />
               <span className="text-[11px] text-muted-foreground font-mono">
                 TimesFM {timesfmEm.horizon}D{' '}

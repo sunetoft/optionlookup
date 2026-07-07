@@ -10,7 +10,7 @@ export async function GET() {
   }
 
   const bookmarks = await prisma.bookmark.findMany({
-    where: { userId: (session.user as any).id },
+    where: { userId: session.user.id },
     orderBy: { createdAt: 'desc' },
   });
 
@@ -34,13 +34,13 @@ export async function POST(req: NextRequest) {
     const bookmark = await prisma.bookmark.upsert({
       where: {
         userId_ticker: {
-          userId: (session.user as any).id,
+          userId: session.user.id,
           ticker,
         },
       },
       update: {},
       create: {
-        userId: (session.user as any).id,
+        userId: session.user.id,
         ticker,
       },
     });
@@ -68,7 +68,7 @@ export async function DELETE(req: NextRequest) {
   try {
     await prisma.bookmark.deleteMany({
       where: {
-        userId: (session.user as any).id,
+        userId: session.user.id,
         ticker,
       },
     });

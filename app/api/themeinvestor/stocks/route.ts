@@ -16,7 +16,7 @@ export async function GET() {
   try {
     const stocks = await prisma.importedStock.findMany({
       where: {
-        userId: (session.user as any).id,
+        userId: session.user.id,
         source: 'themeinvestor',
       },
       orderBy: { createdAt: 'desc' },
@@ -49,7 +49,7 @@ export async function DELETE(request: Request) {
 
     await prisma.importedStock.deleteMany({
       where: {
-        userId: (session.user as any).id,
+        userId: session.user.id,
         ticker,
         source: 'themeinvestor',
       },
