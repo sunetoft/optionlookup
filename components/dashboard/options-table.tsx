@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Filter, Loader2, TableIcon, ArrowDownUp, Info, Trophy, Brain, ShieldCheck } from 'lucide-react';
+import { Filter, Loader2, TableIcon, ArrowDownUp, Info, Trophy, Brain, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -56,9 +56,10 @@ interface OptionsTableProps {
   currentPrice: number;
   timesfmEm?: any | null;
   timesfmTerm?: any | null;
+  sma50?: number | null;
 }
 
-export function OptionsTable({ ticker, expectedMoves, earningsDate, currentPrice, timesfmEm, timesfmTerm }: OptionsTableProps) {
+export function OptionsTable({ ticker, expectedMoves, earningsDate, currentPrice, timesfmEm, timesfmTerm, sma50 }: OptionsTableProps) {
   const [puts, setPuts] = useState<QualifiedPut[]>([]);
   const [modelPicks, setModelPicks] = useState<ModelPick[]>([]);
   const [hasModelScoring, setHasModelScoring] = useState(false);
@@ -68,6 +69,11 @@ export function OptionsTable({ ticker, expectedMoves, earningsDate, currentPrice
   const [totalFound, setTotalFound] = useState(0);
   const [scanStats, setScanStats] = useState<ScanStats | null>(null);
   const [dataSource, setDataSource] = useState<string>('');
+
+  // Compute how many qualifying puts have strikes below 50 SMA
+  const putsBelowSMA = sma50 != null && sma50 > 0 && puts.length > 0
+    ? puts.filter(p => p.strike < sma50)
+    : [];
 
   const fetchOptions = async () => {
     setLoading(true);
@@ -145,6 +151,23 @@ export function OptionsTable({ ticker, expectedMoves, earningsDate, currentPrice
         {error && (
           <div className="p-3 rounded-lg bg-red-50 text-red-600 text-sm dark:bg-red-950/20 dark:text-red-400">
             {error}
+          </div>
+        )}
+
+        {/* ── SMA Warning ─────────────────────────────────────────── */}
+        {fetched && putsBelowSMA.length > 0 && (
+          <div className="p-3 rounded-lg bg-orange-50 dark:bg-orange-950/20 border border-orange-500/30 flex items-start gap-2.5">
+            <AlertTriangle className="h-5 w-5 text-orange-500 flex-shrink-0 mt-0.5" />
+            <div className="text-sm space-y-1">
+              <p className="font-semibold text-orange-700 dark:text-orange-400">
+                {putsBelowSMA.length} put{putsBelowSMA.length !== 1 ? 's' : ''} below 50-day SMA (${sma50?.toFixed(2)})
+              </p>
+              <p className="text-xs text-orange-600/80 dark:text-orange-400/70">
+                Strikes below the 50 SMA (${sma50?.toFixed(2)}) are in a bearish zone —
+                higher assignment risk if the stock is already trending down.
+                These puts are highlighted with a <span className="font-mono font-bold text-orange-600 dark:text-orange-400">⚠</span> badge in the table.
+              </p>
+            </div>
           </div>
         )}
 
@@ -291,7 +314,16 @@ export function OptionsTable({ ticker, expectedMoves, earningsDate, currentPrice
                 <TableBody>
                   {puts?.map?.((put: QualifiedPut, i: number) => (
                     <TableRow key={i} className="hover:bg-muted/50">
-                      <TableCell className="font-mono font-semibold">${put?.strike?.toFixed?.(2) ?? '0'}</TableCell>
+                      <TableCell className="font-mono font-semibold">
+                        <span className="inline-flex items-center gap-1">
+                          ${put?.strike?.toFixed?.(2) ?? '0'}
+                          {sma50 != null && sma50 > 0 && (put?.strike ?? 0) < sma50 && (
+                            <span className="text-orange-500 text-xs" title={`Strike $${put?.strike?.toFixed(2)} is below 50-day SMA $${sma50.toFixed(2)}`}>
+                              <AlertTriangle className="h-3.5 w-3.5 inline" />
+                            </span>
+                          )}
+                        </span>
+                      </TableCell>
                       <TableCell className="font-mono text-sm">{put?.expiration ?? ''}</TableCell>
                       <TableCell className="font-mono text-sm">{put?.dte ?? 0}</TableCell>
                       <TableCell className="font-mono text-sm">${put?.bid?.toFixed?.(2) ?? '0'}</TableCell>

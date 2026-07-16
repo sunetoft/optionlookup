@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { calculateEMA, calculateRSI } from '@/lib/stock-utils';
+import { calculateEMA, calculateRSI, calculateSMA } from '@/lib/stock-utils';
 
 import YahooFinance from 'yahoo-finance2';
 import { isAlpacaConfigured, fetchAlpacaATMStraddle, fetchAlpacaExpirationDates } from '@/lib/alpaca-client';
@@ -33,6 +33,30 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 1500): 
     }
   }
   throw new Error('withRetry exhausted');
+}
+
+// ── Theme classification ────────────────────────────────────────────────
+const THEME_MAP: { theme: string; keywords: string[] }[] = [
+  { theme: 'AI & Semiconductors', keywords: ['semiconductor', 'chip', 'artificial intelligence', 'machine learning', 'gpu', 'nvidia', 'ai ', 'accelerator', 'foundry'] },
+  { theme: 'Clean Energy', keywords: ['solar', 'renewable', 'clean energy', 'battery', 'wind', 'hydrogen', 'ev ', 'electric vehicle', 'lithium', 'uranium', 'nuclear'] },
+  { theme: 'Defense & Aerospace', keywords: ['defense', 'aerospace', 'military', 'weapon', 'missile', 'fighter'] },
+  { theme: 'Biotech & Genomics', keywords: ['biotech', 'pharma', 'drug', 'genomic', 'medical device', 'life sciences', 'crispr'] },
+  { theme: 'Fintech & Digital Payments', keywords: ['fintech', 'payment', 'crypto', 'digital bank', 'blockchain', 'bitcoin'] },
+  { theme: 'Cybersecurity', keywords: ['cybersecurity', 'cyber security', 'security software', 'threat intelligence'] },
+  { theme: 'Quantum Computing', keywords: ['quantum'] },
+  { theme: 'Robotics & Automation', keywords: ['robot', 'automation', 'humanoid', 'industrial automation'] },
+  { theme: 'Cloud & SaaS', keywords: ['cloud computing', 'software-as-a-service', 'saas', 'enterprise software'] },
+  { theme: 'E-commerce & Consumer Tech', keywords: ['e-commerce', 'online retail', 'marketplace', 'social media'] },
+  { theme: 'Infrastructure & Construction', keywords: ['construction', 'infrastructure', 'engineering', 'building materials'] },
+  { theme: 'Commodities & Materials', keywords: ['mining', 'gold', 'copper', 'steel', 'commodities', 'precious metal'] },
+];
+
+function classifyTheme(sector: string, industry: string, name: string): string {
+  const searchText = `${sector} ${industry} ${name}`.toLowerCase();
+  for (const t of THEME_MAP) {
+    if (t.keywords.some(k => searchText.includes(k))) return t.theme;
+  }
+  return sector || 'Unclassified';
 }
 
 async function fetchYahooQuote(ticker: string): Promise<any> {
@@ -141,12 +165,12 @@ async function fetchTimesfmTerm(ticker: string, maxHorizon: number = 45): Promis
   }
 }
 
-async function fetchAlpacaHistory(ticker: string, months: number = 6): Promise<Array<{ date: string; close: number }>> {
+async function fetchAlpacaHistory(ticker: string, months: number = 6): Promise<Array<{ date: string; close: number; open: number }>> {
   const headers = getAlpacaHeaders();
   const startDate = new Date();
   startDate.setMonth(startDate.getMonth() - months);
   
-  const allBars: Array<{ date: string; close: number }> = [];
+  const allBars: Array<{ date: string; close: number; open: number }> = [];
   let pageToken: string | null = null;
   
   for (let page = 0; page < 5; page++) {
@@ -165,7 +189,7 @@ async function fetchAlpacaHistory(ticker: string, months: number = 6): Promise<A
     if (bars.length === 0) break;
     
     for (const b of bars) {
-      allBars.push({ date: (b.t ?? '').slice(0, 10), close: b.c ?? 0 });
+      allBars.push({ date: (b.t ?? '').slice(0, 10), close: b.c ?? 0, open: b.o ?? b.c ?? 0 });
     }
     pageToken = data?.next_page_token ?? null;
     if (!pageToken) break;
@@ -295,7 +319,7 @@ export async function POST(req: NextRequest) {
         const alpBars = await fetchAlpacaHistory(ticker, 6);
         if (alpBars.length > 0) {
           resolvedHistory = {
-            quotes: alpBars.map(b => ({ date: b.date, close: b.close })),
+            quotes: alpBars.map(b => ({ date: b.date, close: b.close, open: b.open ?? b.close })),
           };
           usedAlpacaForHistory = true;
           console.log(`[ANALYZE] Alpaca history OK for ${ticker}, bars=${alpBars.length}`);
@@ -549,6 +573,81 @@ export async function POST(req: NextRequest) {
       };
     }
 
+    // ── Ticker Insights (gaps, SMA50, analyst consensus, theme) ──────────
+
+    // 50-day SMA
+    const sma50 = calculateSMA(closePrices, 50);
+
+    // Gap detection: |open - prevClose| / prevClose >= 2%
+    const GAP_THRESHOLD = 0.02;
+    const allQuotes = resolvedHistory?.quotes ?? [];
+    const gaps: any[] = [];
+    for (let i = 1; i < allQuotes.length; i++) {
+      const prevClose = allQuotes[i - 1]?.close ?? 0;
+      const dayOpen = allQuotes[i]?.open ?? allQuotes[i]?.close ?? 0;
+      if (prevClose <= 0) continue;
+      const gapPct = (dayOpen - prevClose) / prevClose;
+      if (Math.abs(gapPct) >= GAP_THRESHOLD) {
+        const dateStr = allQuotes[i]?.date
+          ? new Date(allQuotes[i].date).toISOString().split('T')[0]
+          : '';
+        gaps.push({
+          date: dateStr,
+          direction: gapPct > 0 ? 'up' : 'down',
+          gapPct: Math.round(gapPct * 10000) / 100,
+          openPrice: Math.round(dayOpen * 100) / 100,
+          prevClose: Math.round(prevClose * 100) / 100,
+        });
+      }
+    }
+    const latestGaps = gaps.slice(-2).reverse();
+
+    // Analyst consensus (from Yahoo quote)
+    const qAny = resolvedQuote as any;
+    const targetMean = qAny?.targetMeanPrice ?? null;
+    const targetHigh = qAny?.targetHighPrice ?? null;
+    const targetLow = qAny?.targetLowPrice ?? null;
+    const targetMedian = qAny?.targetMedianPrice ?? null;
+    const recommendation = qAny?.recommendationKey ?? null;
+    const numAnalysts = qAny?.numberOfAnalystOpinions ?? null;
+    const upsideDownside = targetMean && currentPrice > 0
+      ? Math.round(((targetMean - currentPrice) / currentPrice) * 10000) / 100
+      : null;
+
+    // Theme/sector classification
+    const sector = qAny?.sector ?? '';
+    const industry = qAny?.industry ?? '';
+    const stockName = qAny?.shortName ?? qAny?.longName ?? ticker;
+    const themeClassification = classifyTheme(sector, industry, stockName);
+    const themeStatus = sma50 > 0
+      ? (currentPrice > sma50 ? 'Leading' : 'Emerging')
+      : 'Unknown';
+
+    const tickerInsights = {
+      gaps: latestGaps,
+      sma50: sma50 > 0 ? {
+        value: Math.round(sma50 * 100) / 100,
+        above: currentPrice > sma50,
+        deviation: Math.round(((currentPrice - sma50) / sma50) * 10000) / 100,
+      } : null,
+      analyst: targetMean ? {
+        targetMean: Math.round(targetMean * 100) / 100,
+        targetHigh: targetHigh ? Math.round(targetHigh * 100) / 100 : null,
+        targetLow: targetLow ? Math.round(targetLow * 100) / 100 : null,
+        targetMedian: targetMedian ? Math.round(targetMedian * 100) / 100 : null,
+        recommendation,
+        numberOfAnalysts: numAnalysts,
+        upsideDownside,
+        currentPrice,
+      } : null,
+      theme: {
+        sector,
+        industry,
+        classification: themeClassification,
+        status: themeStatus,
+      },
+    };
+
     return NextResponse.json({
       ticker,
       fundamentals,
@@ -559,6 +658,7 @@ export async function POST(req: NextRequest) {
       earningsDaysAway,
       timesfmEm,
       timesfmTerm,
+      tickerInsights,
       dataSource: {
         quote: usedAlpacaForQuote ? 'alpaca' : 'yahoo',
         history: usedAlpacaForHistory ? 'alpaca' : 'yahoo',

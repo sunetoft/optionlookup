@@ -8,6 +8,7 @@ import { LogOut, Bookmark, BookmarkCheck, History, Search, ArrowDownToLine, Lock
 import { TickerInput } from './ticker-input';
 import { FundamentalsCard } from './fundamentals-card';
 import { WarningsCard } from './warnings-card';
+import { TickerInsightsCard } from './ticker-insights-card';
 import { ExpectedMovesCard } from './expected-moves-card';
 import { PriceChart } from './price-chart';
 import { OptionsTable } from './options-table';
@@ -25,6 +26,7 @@ interface AnalysisData {
   earningsDaysAway: number | null;
   timesfmEm?: any | null;
   timesfmTerm?: any | null;
+  tickerInsights?: any | null;
 }
 
 interface AnonAccess {
@@ -616,6 +618,10 @@ export function DashboardContent() {
             </SlideIn>
 
             <SlideIn from="bottom" delay={0.15}>
+              <TickerInsightsCard insights={analysisData?.tickerInsights ?? null} />
+            </SlideIn>
+
+            <SlideIn from="bottom" delay={0.2}>
               <ExpectedMovesCard
                 moves={analysisData?.expectedMoves ?? []}
                 currentPrice={analysisData?.fundamentals?.currentPrice ?? 0}
@@ -623,7 +629,7 @@ export function DashboardContent() {
               />
             </SlideIn>
 
-            <SlideIn from="bottom" delay={0.2}>
+            <SlideIn from="bottom" delay={0.25}>
               <PriceChart
                 priceHistory={analysisData?.priceHistory ?? []}
                 expectedMoves={analysisData?.expectedMoves ?? []}
@@ -632,7 +638,7 @@ export function DashboardContent() {
               />
             </SlideIn>
 
-            <SlideIn from="bottom" delay={0.25}>
+            <SlideIn from="bottom" delay={0.3}>
               <OptionsTable
                 ticker={currentTicker}
                 expectedMoves={analysisData?.expectedMoves ?? []}
@@ -640,6 +646,7 @@ export function DashboardContent() {
                 currentPrice={analysisData?.fundamentals?.currentPrice ?? 0}
                 timesfmEm={analysisData?.timesfmEm ?? null}
                 timesfmTerm={analysisData?.timesfmTerm ?? null}
+                sma50={analysisData?.tickerInsights?.sma50?.value ?? null}
               />
             </SlideIn>
           </div>

@@ -64,6 +64,12 @@ export function calculateRSI(prices: number[], period: number = 14): number[] {
   return rsi;
 }
 
+export function calculateSMA(prices: number[], period: number): number {
+  if (!prices?.length || prices.length < period) return 0;
+  const slice = prices.slice(-period);
+  return slice.reduce((sum, p) => sum + (p ?? 0), 0) / period;
+}
+
 export function formatMarketCap(val: number | null | undefined): string {
   if (!val) return 'N/A';
   if (val >= 1e12) return `$${(val / 1e12).toFixed(2)}T`;

@@ -97,11 +97,47 @@ app/                    Next.js App Router
   pricing/              Stripe pricing page
   login/ / signup/      Auth pages
 components/             React components (Radix UI, dashboard widgets)
-lib/                    Shared utilities (auth, db, email, market data, etc.)
+  dashboard/            Analysis widgets (fundamentals, warnings, insights, expected moves, chart, options)
+lib/                    Shared utilities (auth, db, email, market data, stock-utils, etc.)
 prisma/                 Prisma schema + migrations
 scripts/                Maintenance scripts
 types/                  TypeScript type definitions
 ```
+
+## Dashboard Analysis Components
+
+The dashboard renders a vertical stack of analysis cards when a ticker is looked up:
+
+1. **FundamentalsCard** — Price, P/E, P/S, EPS growth, market cap, volume, 52W range
+2. **WarningsCard** — Technical warnings (earnings proximity, EMA21 deviation, RSI, monthly range)
+3. **TickerInsightsCard** — 4-tile visual insights grid:
+   - **Recent Gaps**: 2 latest gap-up/gap-down events (≥2% open vs prev close)
+   - **Theme & Sector**: Yahoo Finance sector/industry → theme classification (AI, Clean Energy, Defense, etc.), tagged "Leading" (above 50 SMA) or "Emerging"
+   - **Analyst Consensus**: Mean/median/high/low target prices, upside/downside %, recommendation badge (Buy/Hold/Sell)
+   - **50-Day SMA**: Current price vs 50 SMA with visual position bar, bullish/bearish status
+4. **ExpectedMovesCard** — Options-implied EM (0.85×ATM straddle) + TimesFM model EM comparison
+5. **PriceChart** — 6-month price history with EMA21 overlay and EM bands
+6. **OptionsTable** — Scans all option chains for qualifying puts. Shows ⚠ warning on puts with strikes below 50 SMA.
+
+### `/api/stock/analyze` Response
+
+The analyze route returns a `tickerInsights` object alongside existing data:
+
+```typescript
+tickerInsights: {
+  gaps: [{ date, direction: 'up'|'down', gapPct, openPrice, prevClose }];  // max 2 latest
+  sma50: { value, above: boolean, deviation: number } | null;               // null if <50 trading days
+  analyst: { targetMean, targetHigh, targetLow, targetMedian, recommendation, numberOfAnalysts, upsideDownside, currentPrice } | null;
+  theme: { sector, industry, classification: string, status: 'Leading'|'Emerging'|'Unknown' };
+}
+```
+
+### SMA Warning in Options Table
+
+`OptionsTable` accepts an optional `sma50` prop (number | null). When qualifying puts have strikes below the 50 SMA:
+- An orange warning banner appears at the top of the card
+- Each affected put row shows a ⚠ icon next to the strike price
+
 
 ## Cron Jobs
 
