@@ -12,6 +12,7 @@ export async function GET() {
 - [Pricing](/pricing) — subscription plans
 - [Login](/login) — sign in
 - [Sign Up](/signup) — create account
+- [Reset Password](/reset-password) — password reset
 
 ## API
 - [Bookmarks](/api/bookmarks) — manage bookmarked stocks (auth required)
@@ -19,6 +20,10 @@ export async function GET() {
 - [Stripe Webhooks](/api/stripe) — Stripe webhook endpoint
 - [External Import](/api/external/import-stock) — cross-site stock import (auth required)
 - [Cron Renewal Reminders](/api/cron/renewal-reminders) — subscription renewal emails
+- [Admin Users](/api/admin/users) — user management (admin)
+- [Admin Email](/api/admin/email-users) — bulk email (admin)
+- [TradeScouter Sync](/api/tradescouter) — cross-site stock sync
+- [ThemeInvestor Sync](/api/themeinvestor) — cross-site stock sync
 
 ## Links
 - [GitHub](https://github.com/sunetoft/optionlookup)

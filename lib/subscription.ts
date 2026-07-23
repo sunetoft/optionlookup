@@ -53,6 +53,14 @@ export const ANON_FREE_LOOKUPS = 5;
 export const ANON_QUARANTINE_DAYS = 5;
 export const RENEWAL_REMINDER_DAYS = 4;
 
+export async function isAdminUser(userId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+  return user?.role === 'ADMIN';
+}
+
 export async function hasActiveSubscription(userId: string): Promise<boolean> {
   const sub = await prisma.subscription.findFirst({
     where: {

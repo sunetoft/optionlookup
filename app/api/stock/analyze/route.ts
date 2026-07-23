@@ -7,7 +7,7 @@ import { calculateEMA, calculateRSI, calculateSMA } from '@/lib/stock-utils';
 
 import YahooFinance from 'yahoo-finance2';
 import { isAlpacaConfigured, fetchAlpacaATMStraddle, fetchAlpacaExpirationDates } from '@/lib/alpaca-client';
-import { hasActiveSubscription, checkAnonymousAccess, recordAnonymousLookup, getClientIdentifier } from '@/lib/subscription';
+import { hasActiveSubscription, isAdminUser, checkAnonymousAccess, recordAnonymousLookup, getClientIdentifier } from '@/lib/subscription';
 
 function getYF() {
   return new (YahooFinance as any)({ suppressNotices: ['yahooSurvey'] });
@@ -211,7 +211,33 @@ export async function POST(req: NextRequest) {
     const session = await getServerSession(authOptions);
     const isAnonymous = !session?.user?.id;
 
-    if (isAnonymous) {
+    if (!isAnonymous) {
+      // Admin users bypass all rate limits
+      const isAdmin = await isAdminUser(session.user.id);
+      if (isAdmin) {
+        // Admin: skip all rate limiting, proceed directly to data fetch
+        // (jump past the rate-limit block)
+      } else {
+        // Authenticated user — check subscription
+        const hasSub = await hasActiveSubscription(session.user.id);
+        if (!hasSub) {
+          const identifier = `user:${session.user.id}`;
+          const access = await checkAnonymousAccess(identifier);
+
+          if (!access.allowed) {
+            return NextResponse.json({
+              error: 'RATE_LIMITED',
+              message: `You've used all ${access.totalAllowed} free lookups. Upgrade to unlimited.`,
+              quarantinedUntil: access.quarantinedUntil,
+              remaining: 0,
+            }, { status: 403 });
+          }
+
+          await recordAnonymousLookup(identifier, ticker);
+        }
+      }
+    } else {
+      // Anonymous — check free lookups
       const identifier = getClientIdentifier(req);
       const access = await checkAnonymousAccess(identifier);
 
@@ -225,24 +251,6 @@ export async function POST(req: NextRequest) {
       }
 
       await recordAnonymousLookup(identifier, ticker);
-    } else {
-      // Authenticated user — check subscription
-      const hasSub = await hasActiveSubscription(session.user.id);
-      if (!hasSub) {
-        const identifier = `user:${session.user.id}`;
-        const access = await checkAnonymousAccess(identifier);
-
-        if (!access.allowed) {
-          return NextResponse.json({
-            error: 'RATE_LIMITED',
-            message: `You've used all ${access.totalAllowed} free lookups. Upgrade to unlimited.`,
-            quarantinedUntil: access.quarantinedUntil,
-            remaining: 0,
-          }, { status: 403 });
-        }
-
-        await recordAnonymousLookup(identifier, ticker);
-      }
     }
 
     // Fetch data in parallel
