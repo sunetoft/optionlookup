@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession, signOut, signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { LogOut, Bookmark, BookmarkCheck, History, Search, ArrowDownToLine, Lock, Sparkles, X, Crosshair } from 'lucide-react';
+import { LogOut, Bookmark, BookmarkCheck, History, Search, ArrowDownToLine, Lock, Sparkles, X, Crosshair, UserCircle, Settings, CreditCard } from 'lucide-react';
 import { TickerInput } from './ticker-input';
 import { FundamentalsCard } from './fundamentals-card';
 import { WarningsCard } from './warnings-card';
@@ -52,7 +52,24 @@ export function DashboardContent() {
   const [anonAccess, setAnonAccess] = useState<AnonAccess | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
 
+  // Profile dropdown state
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
+
   const isAnonymous = status === 'unauthenticated';
+
+  // Close profile dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setProfileOpen(false);
+      }
+    }
+    if (profileOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [profileOpen]);
 
   // Fetch anonymous access info on mount + when session changes
   useEffect(() => {
@@ -356,17 +373,70 @@ export function DashboardContent() {
                 >
                   <Crosshair className="h-4 w-4 mr-1" /> Scanner
                 </Button>
-                <span className="text-sm text-muted-foreground hidden md:block">
-                  {session?.user?.name ?? session?.user?.email ?? ''}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => signOut({ callbackUrl: '/login' })}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  <LogOut className="h-4 w-4 mr-1" /> Sign Out
-                </Button>
+
+                {/* Profile dropdown */}
+                <div className="relative" ref={profileRef}>
+                  <button
+                    onClick={() => setProfileOpen(!profileOpen)}
+                    className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition p-1 rounded-lg hover:bg-muted"
+                    aria-label="Account menu"
+                  >
+                    <UserCircle className="h-6 w-6" />
+                  </button>
+
+                  {profileOpen && (
+                    <div className="absolute right-0 mt-2 w-60 bg-card border border-border rounded-xl shadow-xl py-1.5 z-50">
+                      {/* User info header */}
+                      <div className="px-4 py-2.5 border-b border-border">
+                        <p className="text-sm font-medium text-foreground truncate">
+                          {session?.user?.name ?? session?.user?.email ?? 'User'}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {session?.user?.email ?? ''}
+                        </p>
+                      </div>
+
+                      {/* Account settings */}
+                      <button
+                        onClick={() => { setProfileOpen(false); router.push('/account'); }}
+                        className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-muted-foreground hover:bg-muted transition"
+                      >
+                        <Settings className="h-4 w-4" />
+                        Account Settings
+                      </button>
+
+                      {/* Billing / invoices */}
+                      <button
+                        onClick={() => { setProfileOpen(false); router.push('/account'); }}
+                        className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-muted-foreground hover:bg-muted transition"
+                      >
+                        <CreditCard className="h-4 w-4" />
+                        Billing &amp; Invoices
+                      </button>
+
+                      {/* Scanner */}
+                      <button
+                        onClick={() => { setProfileOpen(false); router.push('/scanner'); }}
+                        className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-muted-foreground hover:bg-muted transition md:hidden"
+                      >
+                        <Crosshair className="h-4 w-4" />
+                        CSP Scanner
+                      </button>
+
+                      {/* Divider */}
+                      <div className="h-px bg-border my-1" />
+
+                      {/* Sign out */}
+                      <button
+                        onClick={() => { setProfileOpen(false); signOut({ callbackUrl: '/login' }); }}
+                        className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-muted-foreground hover:bg-muted transition"
+                      >
+                        <LogOut className="h-4 w-4" />
+                        Sign Out
+                      </button>
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </div>

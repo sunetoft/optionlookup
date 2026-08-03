@@ -81,6 +81,7 @@ export default function AccountPage() {
           </Link>
           <div className="flex items-center gap-4">
             <Link href="/dashboard" className="text-slate-400 hover:text-amber-500 text-sm">Dashboard</Link>
+            <Link href="/scanner" className="text-slate-400 hover:text-amber-500 text-sm">Scanner</Link>
             <Link href="/pricing" className="text-slate-400 hover:text-amber-500 text-sm">Pricing</Link>
           </div>
         </div>
