@@ -119,10 +119,26 @@ export async function scanTickerForCSP(
   }
 
   // Step 2: Scan option chains (Yahoo primary, Alpaca failover)
+  // Yahoo often returns bid=0 for OTM puts — if we get 0 contracts with high
+  // noBid rejections, fall back to Alpaca for real bid data.
   let scanData: { contracts: ScannerContract[]; stats: { datesScanned: number; totalPutsChecked: number; rejections: { noBid: number; aboveTarget: number; lowRoi: number; lowStrike: number } } };
 
   try {
     scanData = await scanViaYahoo(upperTicker, currentPrice, priceTarget, earningsDate);
+
+    // Smart failover: if Yahoo returned 0 contracts but many puts were rejected
+    // for "noBid", the data is likely stale — retry via Alpaca
+    if (scanData.contracts.length === 0 && scanData.stats.rejections.noBid > 10 && isAlpacaConfigured()) {
+      console.log(`[SCANNER] ${upperTicker}: Yahoo returned 0 contracts (${scanData.stats.rejections.noBid} noBid rejections) — retrying via Alpaca`);
+      try {
+        const alpacaData = await scanViaAlpaca(upperTicker, currentPrice, priceTarget, earningsDate);
+        if (alpacaData.contracts.length > 0 || alpacaData.stats.totalPutsChecked > 0) {
+          scanData = alpacaData;
+        }
+      } catch (alpacaErr: any) {
+        console.warn(`[SCANNER] ${upperTicker}: Alpaca failover failed: ${alpacaErr?.message}`);
+      }
+    }
   } catch (yahooErr: any) {
     console.warn(`[SCANNER] Yahoo scan failed for ${upperTicker}: ${yahooErr?.message}`);
     if (isAlpacaConfigured()) {
