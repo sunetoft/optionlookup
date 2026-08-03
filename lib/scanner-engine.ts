@@ -206,7 +206,7 @@ async function scanViaYahoo(
       const puts = putsData?.options?.[0]?.puts ?? [];
 
       const dte = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-      if (dte <= 0) continue;
+      if (dte < DTE_MIN || dte > DTE_MAX) continue;
 
       datesScanned++;
       const expStr = expDate.toISOString().split('T')[0];
@@ -338,7 +338,7 @@ async function scanViaAlpaca(
   for (const expStr of allExpirations) {
     const expDate = new Date(expStr + 'T00:00:00Z');
     const dte = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    if (dte <= 0) continue;
+    if (dte < DTE_MIN || dte > DTE_MAX) continue;
 
     datesScanned++;
 
