@@ -24,6 +24,7 @@ model User {
   subscriptions   Subscription[]
   importedStocks  ImportedStock[]
   passwordResets  PasswordReset[]
+  scanTickers     ScanTicker[]
 }
 
 model PasswordReset {
@@ -150,11 +151,72 @@ model EmailLog {
   userId    String?
   email     String
   subject   String
-  type      String   // RENEWAL_REMINDER, WELCOME, QUARANTINE, CANCELLATION
+  type      String   // RENEWAL_REMINDER, WELCOME, QUARANTINE, CANCELLATION, SCANNER_DIGEST
   sentAt    DateTime @default(now())
   success   Boolean  @default(true)
   error     String?
 
   @@index([email])
   @@index([type, sentAt])
+}
+
+// ── CSP Scanner Models ────────────────────────────────────────────────
+
+model ScanTicker {
+  id           String   @id @default(cuid())
+  userId       String
+  ticker       String
+  priceTarget  Float
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scanResults  ScanResult[]
+  scanRuns     ScanRun[]
+
+  @@unique([userId, ticker])
+  @@index([userId])
+}
+
+model ScanResult {
+  id              String   @id @default(cuid())
+  scanTickerId    String
+  scanRunId       String
+  strike          Float
+  expiration      String   // YYYY-MM-DD
+  dte             Int
+  bid             Float
+  ask             Float
+  roiPerDay       Float
+  totalRoi        Float
+  openInterest    Int      @default(0)
+  volume          Int      @default(0)
+  impliedVol      Float    @default(0)
+  earningsWarning Boolean  @default(false)
+  emWarning       Boolean  @default(false)
+  scannedAt       DateTime @default(now())
+
+  scanTicker      ScanTicker @relation(fields: [scanTickerId], references: [id], onDelete: Cascade)
+
+  @@index([scanTickerId])
+  @@index([scanRunId])
+  @@index([scannedAt])
+}
+
+model ScanRun {
+  id            String   @id @default(cuid())
+  scanTickerId  String
+  userId        String
+  ticker        String
+  scanType      String   // "scheduled" | "manual"
+  totalPuts     Int      @default(0)
+  qualifiedPuts Int      @default(0)
+  currentPrice  Float?
+  earningsDate  String?
+  scannedAt     DateTime @default(now())
+
+  scanTicker    ScanTicker @relation(fields: [scanTickerId], references: [id], onDelete: Cascade)
+
+  @@index([userId, ticker])
+  @@index([scannedAt])
 }

@@ -53,6 +53,24 @@ export const ANON_FREE_LOOKUPS = 5;
 export const ANON_QUARANTINE_DAYS = 5;
 export const RENEWAL_REMINDER_DAYS = 4;
 
+// ── CSP Scanner Tier Limits ──────────────────────────────────────────
+export const FREE_SCANNER_TICKER_LIMIT = 3;
+
+export async function canAddScannerTicker(userId: string): Promise<{ allowed: boolean; limit: number; current: number; unlimited: boolean }> {
+  const isAdmin = await isAdminUser(userId);
+  if (isAdmin) {
+    const current = await prisma.scanTicker.count({ where: { userId } });
+    return { allowed: true, limit: Infinity, current, unlimited: true };
+  }
+  const hasSub = await hasActiveSubscription(userId);
+  if (hasSub) {
+    const current = await prisma.scanTicker.count({ where: { userId } });
+    return { allowed: true, limit: Infinity, current, unlimited: true };
+  }
+  const current = await prisma.scanTicker.count({ where: { userId } });
+  return { allowed: current < FREE_SCANNER_TICKER_LIMIT, limit: FREE_SCANNER_TICKER_LIMIT, current, unlimited: false };
+}
+
 export async function isAdminUser(userId: string): Promise<boolean> {
   const user = await prisma.user.findUnique({
     where: { id: userId },

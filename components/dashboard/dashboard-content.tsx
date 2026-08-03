@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSession, signOut, signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { LogOut, Bookmark, BookmarkCheck, History, Search, ArrowDownToLine, Lock, Sparkles, X } from 'lucide-react';
+import { LogOut, Bookmark, BookmarkCheck, History, Search, ArrowDownToLine, Lock, Sparkles, X, Crosshair } from 'lucide-react';
 import { TickerInput } from './ticker-input';
 import { FundamentalsCard } from './fundamentals-card';
 import { WarningsCard } from './warnings-card';
@@ -348,6 +348,14 @@ export function DashboardContent() {
               </>
             ) : (
               <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => router.push('/scanner')}
+                  className="text-muted-foreground hover:text-amber-500"
+                >
+                  <Crosshair className="h-4 w-4 mr-1" /> Scanner
+                </Button>
                 <span className="text-sm text-muted-foreground hidden md:block">
                   {session?.user?.name ?? session?.user?.email ?? ''}
                 </span>
