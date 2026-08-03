@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
-  Crosshair, Plus, Trash2, RefreshCw, Loader2,
+  Crosshair, Plus, Trash2, RefreshCw, Loader2, Clock,
   TrendingUp, AlertTriangle, ShieldAlert, Zap, Crown, Lock,
 } from 'lucide-react';
 import { TickerRow } from './ticker-row';
@@ -62,6 +62,11 @@ export function ScannerDashboard() {
   const [loading, setLoading] = useState(true);
   const [scanningTickers, setScanningTickers] = useState<Set<string>>(new Set());
   const [expandedTicker, setExpandedTicker] = useState<string | null>(null);
+
+  // Derive the most recent scan timestamp across all tickers
+  const lastScanAt = tickers
+    .flatMap((t) => t.scanRuns)
+    .sort((a, b) => new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime())[0]?.scannedAt ?? null;
 
   const fetchTickers = useCallback(async () => {
     try {
@@ -209,16 +214,17 @@ export function ScannerDashboard() {
               <Crosshair className="h-6 w-6 text-amber-500" />
               CSP Scanner
             </h1>
+            {lastScanAt && (
+              <span className="flex items-center gap-1 text-xs text-slate-500 ml-3">
+                <Clock className="h-3 w-3" />
+                Last scan: {new Date(lastScanAt).toLocaleString('en-US', {
+                  month: 'short', day: 'numeric',
+                  hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Copenhagen',
+                })}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3">
-            {session?.user?.role === 'ADMIN' && (
-              <a
-                href="/scanner/heatmap"
-                className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
-              >
-                📊 Heatmap
-              </a>
-            )}
             {tierInfo && (
               <span className={`text-xs px-3 py-1 rounded-full ${
                 tierInfo.unlimited
