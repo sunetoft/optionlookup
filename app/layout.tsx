@@ -3,6 +3,7 @@ import { DM_Sans, Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
 import { Toaster } from 'sonner';
 import { Providers } from '@/components/providers';
 import { Footer } from '@/components/footer';
+import { Navbar } from '@/components/navbar';
 import './globals.css';
 
 const dmSans = DM_Sans({
@@ -75,7 +76,10 @@ export default function RootLayout({
             }),
           }}
         />
-        <Providers>{children}</Providers>
+        <Providers>
+          <Navbar />
+          {children}
+        </Providers>
         <Footer />
         <Toaster position="bottom-right" />
       </body>

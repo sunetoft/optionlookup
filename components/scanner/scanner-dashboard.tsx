@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
-  Crosshair, Plus, Trash2, RefreshCw, Loader2, ArrowLeft,
+  Crosshair, Plus, Trash2, RefreshCw, Loader2,
   TrendingUp, AlertTriangle, ShieldAlert, Zap, Crown, Lock,
 } from 'lucide-react';
 import { TickerRow } from './ticker-row';
@@ -201,13 +201,10 @@ export function ScannerDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
-      {/* Header */}
-      <header className="border-b border-slate-800 bg-slate-900/50 backdrop-blur-lg sticky top-0 z-40">
-        <div className="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <a href="/dashboard" className="text-slate-400 hover:text-slate-200 transition-colors">
-              <ArrowLeft className="h-5 w-5" />
-            </a>
+      {/* Scanner Sub-header */}
+      <div className="border-b border-slate-800 bg-slate-900/50">
+        <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold flex items-center gap-2">
               <Crosshair className="h-6 w-6 text-amber-500" />
               CSP Scanner
@@ -246,7 +243,7 @@ export function ScannerDashboard() {
             )}
           </div>
         </div>
-      </header>
+      </div>
 
       <main className="mx-auto max-w-7xl px-4 py-8">
         {/* Add Ticker Form */}

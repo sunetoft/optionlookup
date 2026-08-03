@@ -49,23 +49,21 @@ export function HeatmapDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
-      {/* Header */}
-      <header className="border-b border-slate-800 bg-slate-900/50 backdrop-blur-lg sticky top-0 z-40">
-        <div className="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <a href="/scanner" className="text-slate-400 hover:text-slate-200 transition-colors">
-              <ArrowLeft className="h-5 w-5" />
-            </a>
-            <h1 className="text-xl font-bold flex items-center gap-2">
-              <Crosshair className="h-6 w-6 text-amber-500" />
-              Market Heatmap
-            </h1>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30">
-              Admin
-            </span>
-          </div>
+      {/* Sub-header */}
+      <div className="border-b border-slate-800 bg-slate-900/50">
+        <div className="mx-auto max-w-7xl px-4 py-3 flex items-center gap-4">
+          <a href="/scanner" className="text-slate-400 hover:text-slate-200 transition-colors">
+            <ArrowLeft className="h-5 w-5" />
+          </a>
+          <h1 className="text-xl font-bold flex items-center gap-2">
+            <Crosshair className="h-6 w-6 text-amber-500" />
+            Market Heatmap
+          </h1>
+          <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30">
+            Admin
+          </span>
         </div>
-      </header>
+      </div>
 
       <main className="mx-auto max-w-7xl px-4 py-8">
         {/* Stats Cards */}

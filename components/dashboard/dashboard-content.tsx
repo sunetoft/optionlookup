@@ -325,123 +325,74 @@ export function DashboardContent() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-background/80 border-b border-border">
-        <div className="max-w-[1200px] mx-auto px-4 h-16 flex items-center justify-between">
+      {/* Dashboard sub-header (global Navbar handles logo + nav) */}
+      <div className="border-b border-border bg-background/50">
+        <div className="max-w-[1200px] mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg bg-amber-500 flex items-center justify-center">
-              <Search className="h-4 w-4 text-white" />
-            </div>
-            <span className="font-display text-lg font-bold tracking-tight">OptionLookup</span>
+            {isAnonymous && showRemainingBadge && (
+              <Badge variant="outline" className={`gap-1 ${remaining && remaining > 0 ? 'text-amber-600 border-amber-500/40' : 'text-red-500 border-red-500/40'}`}>
+                {remaining && remaining > 0 ? (
+                  <><Sparkles className="h-3 w-3" /> {remaining} free lookup{remaining !== 1 ? 's' : ''} left</>
+                ) : (
+                  <><Lock className="h-3 w-3" /> Locked</>
+                )}
+              </Badge>
+            )}
           </div>
           <div className="flex items-center gap-3">
-            {isAnonymous ? (
-              <>
-                {showRemainingBadge && (
-                  <Badge variant="outline" className={`gap-1 ${remaining > 0 ? 'text-amber-600 border-amber-500/40' : 'text-red-500 border-red-500/40'}`}>
-                    {remaining > 0 ? (
-                      <><Sparkles className="h-3 w-3" /> {remaining} free lookup{remaining !== 1 ? 's' : ''} left</>
-                    ) : (
-                      <><Lock className="h-3 w-3" /> Locked</>
-                    )}
-                  </Badge>
-                )}
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={() => router.push('/login?mode=signup')}
-                  className="bg-amber-500 hover:bg-amber-600 text-white"
+            {!isAnonymous && (
+              <div className="relative" ref={profileRef}>
+                <button
+                  onClick={() => setProfileOpen(!profileOpen)}
+                  className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition p-1 rounded-lg hover:bg-muted"
+                  aria-label="Account menu"
                 >
-                  Sign Up
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => router.push('/login')}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  Sign In
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => router.push('/scanner')}
-                  className="text-muted-foreground hover:text-amber-500"
-                >
-                  <Crosshair className="h-4 w-4 mr-1" /> Scanner
-                </Button>
+                  <UserCircle className="h-6 w-6" />
+                </button>
 
-                {/* Profile dropdown */}
-                <div className="relative" ref={profileRef}>
-                  <button
-                    onClick={() => setProfileOpen(!profileOpen)}
-                    className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition p-1 rounded-lg hover:bg-muted"
-                    aria-label="Account menu"
-                  >
-                    <UserCircle className="h-6 w-6" />
-                  </button>
-
-                  {profileOpen && (
-                    <div className="absolute right-0 mt-2 w-60 bg-card border border-border rounded-xl shadow-xl py-1.5 z-50">
-                      {/* User info header */}
-                      <div className="px-4 py-2.5 border-b border-border">
-                        <p className="text-sm font-medium text-foreground truncate">
-                          {session?.user?.name ?? session?.user?.email ?? 'User'}
-                        </p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {session?.user?.email ?? ''}
-                        </p>
-                      </div>
-
-                      {/* Account settings */}
-                      <button
-                        onClick={() => { setProfileOpen(false); router.push('/account'); }}
-                        className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-muted-foreground hover:bg-muted transition"
-                      >
-                        <Settings className="h-4 w-4" />
-                        Account Settings
-                      </button>
-
-                      {/* Billing / invoices */}
-                      <button
-                        onClick={() => { setProfileOpen(false); router.push('/account'); }}
-                        className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-muted-foreground hover:bg-muted transition"
-                      >
-                        <CreditCard className="h-4 w-4" />
-                        Billing &amp; Invoices
-                      </button>
-
-                      {/* Scanner */}
-                      <button
-                        onClick={() => { setProfileOpen(false); router.push('/scanner'); }}
-                        className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-muted-foreground hover:bg-muted transition md:hidden"
-                      >
-                        <Crosshair className="h-4 w-4" />
-                        CSP Scanner
-                      </button>
-
-                      {/* Divider */}
-                      <div className="h-px bg-border my-1" />
-
-                      {/* Sign out */}
-                      <button
-                        onClick={() => { setProfileOpen(false); signOut({ callbackUrl: '/login' }); }}
-                        className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-muted-foreground hover:bg-muted transition"
-                      >
-                        <LogOut className="h-4 w-4" />
-                        Sign Out
-                      </button>
+                {profileOpen && (
+                  <div className="absolute right-0 mt-2 w-60 bg-card border border-border rounded-xl shadow-xl py-1.5 z-50">
+                    <div className="px-4 py-2.5 border-b border-border">
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {session?.user?.name ?? session?.user?.email ?? 'User'}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {session?.user?.email ?? ''}
+                      </p>
                     </div>
-                  )}
-                </div>
-              </>
+
+                    <button
+                      onClick={() => { setProfileOpen(false); router.push('/account'); }}
+                      className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-muted-foreground hover:bg-muted transition"
+                    >
+                      <Settings className="h-4 w-4" />
+                      Account Settings
+                    </button>
+
+                    <button
+                      onClick={() => { setProfileOpen(false); router.push('/account'); }}
+                      className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-muted-foreground hover:bg-muted transition"
+                    >
+                      <CreditCard className="h-4 w-4" />
+                      Billing &amp; Invoices
+                    </button>
+
+                    <div className="h-px bg-border my-1" />
+
+                    <button
+                      onClick={() => { setProfileOpen(false); signOut({ callbackUrl: '/login' }); }}
+                      className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-muted-foreground hover:bg-muted transition"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Sign Out
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
-      </header>
+      </div>
 
       {/* Paywall Modal */}
       {showPaywall && (
