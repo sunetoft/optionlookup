@@ -25,6 +25,7 @@ model User {
   importedStocks  ImportedStock[]
   passwordResets  PasswordReset[]
   scanTickers     ScanTicker[]
+  scanCategories  ScanCategory[]
 }
 
 model PasswordReset {
@@ -162,20 +163,38 @@ model EmailLog {
 
 // ── CSP Scanner Models ────────────────────────────────────────────────
 
+model ScanCategory {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  color     String   @default("amber")  // amber, blue, green, red, purple, cyan, pink, orange
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scanTickers  ScanTicker[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
 model ScanTicker {
   id           String   @id @default(cuid())
   userId       String
   ticker       String
   priceTarget  Float
+  categoryId   String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category     ScanCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   scanResults  ScanResult[]
   scanRuns     ScanRun[]
 
   @@unique([userId, ticker])
   @@index([userId])
+  @@index([categoryId])
 }
 
 model ScanResult {

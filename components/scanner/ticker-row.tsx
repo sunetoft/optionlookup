@@ -4,7 +4,7 @@ import { useState } from 'react';
 import {
   ChevronDown, ChevronRight, RefreshCw, Trash2, Loader2,
   TrendingUp, TrendingDown, AlertTriangle, ShieldAlert,
-  Clock, Target,
+  Clock, Target, FolderOpen,
 } from 'lucide-react';
 
 interface ScanResult {
@@ -37,10 +37,19 @@ interface TickerData {
   id: string;
   ticker: string;
   priceTarget: number;
+  categoryId: string | null;
+  category: { id: string; name: string; color: string } | null;
   createdAt: string;
   updatedAt: string;
   latestResults: ScanResult[];
   scanRuns: ScanRun[];
+}
+
+interface CategoryOption {
+  id: string;
+  name: string;
+  color: string;
+  tickerCount: number;
 }
 
 interface TickerRowProps {
@@ -50,6 +59,8 @@ interface TickerRowProps {
   onToggleExpand: () => void;
   onScan: () => void;
   onDelete: () => void;
+  categories?: CategoryOption[];
+  onCategoryChange?: (categoryId: string | null) => void;
 }
 
 export function TickerRow({
@@ -59,8 +70,11 @@ export function TickerRow({
   onToggleExpand,
   onScan,
   onDelete,
+  categories = [],
+  onCategoryChange,
 }: TickerRowProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
 
   const contracts = t.latestResults || [];
   const latestRun = t.scanRuns[0];
@@ -147,6 +161,82 @@ export function TickerRow({
 
         {/* Actions */}
         <div className="flex items-center gap-1 ml-2" onClick={(e) => e.stopPropagation()}>
+          {/* Per-row category picker */}
+          {categories.length > 0 && onCategoryChange && (
+            <div className="relative">
+              <button
+                onClick={() => setShowCategoryPicker(!showCategoryPicker)}
+                className={`p-1.5 rounded-lg transition-colors flex items-center gap-1 ${
+                  t.category
+                    ? 'hover:bg-slate-800'
+                    : 'hover:bg-slate-800 text-slate-500 hover:text-slate-300'
+                }`}
+                title="Set category"
+              >
+                {t.category ? (
+                  <span className={`h-2.5 w-2.5 rounded-full ${
+                    t.category.color === 'amber' ? 'bg-amber-500' :
+                    t.category.color === 'blue' ? 'bg-blue-500' :
+                    t.category.color === 'green' ? 'bg-green-500' :
+                    t.category.color === 'red' ? 'bg-red-500' :
+                    t.category.color === 'purple' ? 'bg-purple-500' :
+                    t.category.color === 'cyan' ? 'bg-cyan-500' :
+                    t.category.color === 'pink' ? 'bg-pink-500' :
+                    t.category.color === 'orange' ? 'bg-orange-500' :
+                    'bg-slate-500'
+                  }`} />
+                ) : (
+                  <FolderOpen className="h-4 w-4" />
+                )}
+              </button>
+              {showCategoryPicker && (
+                <>
+                  {/* Click-outside overlay */}
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowCategoryPicker(false)}
+                  />
+                  <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-slate-900 border border-slate-700 rounded-lg shadow-xl py-1 max-h-64 overflow-y-auto">
+                    <button
+                      onClick={() => {
+                        onCategoryChange(null);
+                        setShowCategoryPicker(false);
+                      }}
+                      className="w-full text-left px-3 py-1.5 text-xs text-slate-400 hover:bg-slate-800 transition-colors"
+                    >
+                      — No category —
+                    </button>
+                    <div className="border-t border-slate-800 my-1" />
+                    {categories.map((cat) => (
+                      <button
+                        key={cat.id}
+                        onClick={() => {
+                          onCategoryChange(cat.id);
+                          setShowCategoryPicker(false);
+                        }}
+                        className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-slate-800 transition-colors ${
+                          t.categoryId === cat.id ? 'text-slate-100 font-medium' : 'text-slate-400'
+                        }`}
+                      >
+                        <span className={`h-2 w-2 rounded-full ${
+                          cat.color === 'amber' ? 'bg-amber-500' :
+                          cat.color === 'blue' ? 'bg-blue-500' :
+                          cat.color === 'green' ? 'bg-green-500' :
+                          cat.color === 'red' ? 'bg-red-500' :
+                          cat.color === 'purple' ? 'bg-purple-500' :
+                          cat.color === 'cyan' ? 'bg-cyan-500' :
+                          cat.color === 'pink' ? 'bg-pink-500' :
+                          cat.color === 'orange' ? 'bg-orange-500' :
+                          'bg-slate-500'
+                        }`} />
+                        {cat.name}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           <button
             onClick={onScan}
             disabled={isScanning}

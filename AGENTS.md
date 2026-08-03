@@ -60,7 +60,7 @@ npx prisma db push       # sync schema
 
 **Models:** User, Account, Session, VerificationToken, ImportedStock,
 Bookmark, AnalysisHistory, Subscription, AnonymousUsage, EmailLog,
-PasswordReset, ScanTicker, ScanResult, ScanRun
+PasswordReset, ScanCategory, ScanTicker, ScanResult, ScanRun
 
 ### CSP Scanner Models (Aug 2026)
 
@@ -166,9 +166,14 @@ Scanner runs 2× daily during NYSE hours and finds CSP puts matching:
 | `/api/scanner/tickers` | GET | Session | Get user's watchlist with latest results + scan history |
 | `/api/scanner/tickers` | POST | Session | Add ticker `{ ticker, priceTarget }` (respects tier limit) |
 | `/api/scanner/tickers` | DELETE | Session | Remove ticker `{ ticker }` |
+| `/api/scanner/tickers` | PATCH | Session | Update ticker's category `{ ticker, categoryId }` |
 | `/api/scanner/scan` | POST | Session | Manual "Scan Now" `{ ticker }` — runs scan, replaces results |
 | `/api/scanner/cron` | POST | `x-api-key` | Scheduled scan for ALL users (cron job) |
 | `/api/scanner/heatmap` | GET | Admin | Aggregate best CSP contracts across all users |
+| `/api/scanner/categories` | GET | Session | List user's categories with ticker counts |
+| `/api/scanner/categories` | POST | Session | Create category `{ name, color }` OR batch-assign `{ action: 'batch-assign', categoryId, tickers }` |
+| `/api/scanner/categories` | PUT | Session | Update category `{ id, name?, color? }` |
+| `/api/scanner/categories` | DELETE | Session | Delete category `{ id }` — tickers become uncategorized |
 
 ### Scanner Tier Limits
 

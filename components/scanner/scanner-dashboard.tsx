@@ -7,9 +7,20 @@ import { toast } from 'sonner';
 import {
   Crosshair, Plus, Trash2, RefreshCw, Loader2, Clock,
   TrendingUp, AlertTriangle, ShieldAlert, Zap, Crown, Lock,
+  FolderOpen, Folder,
 } from 'lucide-react';
 import { TickerRow } from './ticker-row';
 import { AddTickerForm } from './add-ticker-form';
+import { CategoryManager, type Category } from './category-manager';
+import { getColorClasses } from './category-colors';
+
+// ── Fetch categories helper for parent components ──────────────
+async function fetchCategoriesApi(): Promise<Category[]> {
+  const res = await fetch('/api/scanner/categories');
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.categories || [];
+}
 
 interface ScanResult {
   id: string;
@@ -41,6 +52,8 @@ interface TickerData {
   id: string;
   ticker: string;
   priceTarget: number;
+  categoryId: string | null;
+  category: { id: string; name: string; color: string } | null;
   createdAt: string;
   updatedAt: string;
   latestResults: ScanResult[];
@@ -59,6 +72,7 @@ export function ScannerDashboard() {
   const router = useRouter();
   const [tickers, setTickers] = useState<TickerData[]>([]);
   const [tierInfo, setTierInfo] = useState<TierInfo | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanningTickers, setScanningTickers] = useState<Set<string>>(new Set());
   const [expandedTicker, setExpandedTicker] = useState<string | null>(null);
@@ -70,11 +84,19 @@ export function ScannerDashboard() {
 
   const fetchTickers = useCallback(async () => {
     try {
-      const res = await fetch('/api/scanner/tickers');
-      if (!res.ok) return;
-      const data = await res.json();
-      setTickers(data.tickers || []);
-      setTierInfo(data.tierInfo || null);
+      const [tickersRes, catsRes] = await Promise.all([
+        fetch('/api/scanner/tickers'),
+        fetch('/api/scanner/categories'),
+      ]);
+      if (tickersRes.ok) {
+        const data = await tickersRes.json();
+        setTickers(data.tickers || []);
+        setTierInfo(data.tierInfo || null);
+      }
+      if (catsRes.ok) {
+        const catData = await catsRes.json();
+        setCategories(catData.categories || []);
+      }
     } catch {
       toast.error('Failed to load watchlist');
     } finally {
@@ -108,7 +130,6 @@ export function ScannerDashboard() {
       const data = await res.json();
       toast.success(`${ticker}: ${data.totalFound} contract${data.totalFound !== 1 ? 's' : ''} found`);
 
-      // Update the ticker's results in state
       setTickers((prev) =>
         prev.map((t) =>
           t.ticker === ticker
@@ -196,6 +217,84 @@ export function ScannerDashboard() {
     }
   };
 
+  // Assign a single ticker to a category
+  const handleTickerCategoryChange = async (ticker: string, categoryId: string | null) => {
+    try {
+      const res = await fetch('/api/scanner/tickers', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker, categoryId }),
+      });
+      if (!res.ok) {
+        toast.error('Failed to update category');
+        return;
+      }
+      // Update local state
+      setTickers((prev) =>
+        prev.map((t) => {
+          if (t.ticker !== ticker) return t;
+          const cat = categoryId ? categories.find((c) => c.id === categoryId) : null;
+          return {
+            ...t,
+            categoryId,
+            category: cat ? { id: cat.id, name: cat.name, color: cat.color } : null,
+          };
+        }),
+      );
+      toast.success(`${ticker} moved to ${categoryId ? categories.find((c) => c.id === categoryId)?.name : 'Uncategorized'}`);
+      // Refresh category counts
+      const cats = await fetchCategoriesApi();
+      setCategories(cats);
+    } catch {
+      toast.error('Failed to update category');
+    }
+  };
+
+  // Batch assign multiple tickers to a category
+  const handleBatchAssign = async (categoryId: string, tickerSymbols: string[]) => {
+    try {
+      const res = await fetch('/api/scanner/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'batch-assign', categoryId, tickers: tickerSymbols }),
+      });
+      if (!res.ok) {
+        toast.error('Batch assign failed');
+        return;
+      }
+      toast.success(`${tickerSymbols.length} ticker${tickerSymbols.length !== 1 ? 's' : ''} assigned`);
+      // Refresh both tickers (with new category) and category counts
+      await fetchTickers();
+      const cats = await fetchCategoriesApi();
+      setCategories(cats);
+    } catch {
+      toast.error('Batch assign failed');
+    }
+  };
+
+  const handleCategoriesChanged = useCallback(() => {
+    fetchTickers();
+  }, [fetchTickers]);
+
+  // ── Group tickers by category for display ────────────────────
+  const groupedTickers = (() => {
+    const groups: { categoryId: string | null; categoryName: string; color: string; tickers: TickerData[] }[] = [];
+
+    // Known categories (show even if empty — but only if user has tickers)
+    for (const cat of categories) {
+      const catTickers = tickers.filter((t) => t.categoryId === cat.id);
+      groups.push({ categoryId: cat.id, categoryName: cat.name, color: cat.color, tickers: catTickers });
+    }
+
+    // Uncategorized (only show if any uncategorized tickers exist)
+    const uncategorized = tickers.filter((t) => !t.categoryId);
+    if (uncategorized.length > 0) {
+      groups.push({ categoryId: null, categoryName: 'Uncategorized', color: 'slate', tickers: uncategorized });
+    }
+
+    return groups;
+  })();
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -203,6 +302,22 @@ export function ScannerDashboard() {
       </div>
     );
   }
+
+  const renderTickerRow = (t: TickerData) => (
+    <TickerRow
+      key={t.id}
+      ticker={t}
+      isScanning={scanningTickers.has(t.ticker)}
+      isExpanded={expandedTicker === t.ticker}
+      onToggleExpand={() =>
+        setExpandedTicker(expandedTicker === t.ticker ? null : t.ticker)
+      }
+      onScan={() => handleScan(t.ticker)}
+      onDelete={() => handleDelete(t.ticker)}
+      categories={categories}
+      onCategoryChange={(categoryId) => handleTickerCategoryChange(t.ticker, categoryId)}
+    />
+  );
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -253,11 +368,22 @@ export function ScannerDashboard() {
 
       <main className="mx-auto max-w-7xl px-4 py-8">
         {/* Add Ticker Form */}
-        <div className="mb-6">
+        <div className="mb-4">
           <AddTickerForm onAdd={handleAdd} tierInfo={tierInfo} />
         </div>
 
-        {/* Ticker List */}
+        {/* Category Manager */}
+        {tickers.length > 0 && (
+          <div className="mb-6 p-3 bg-slate-900/30 border border-slate-800 rounded-xl">
+            <CategoryManager
+              tickers={tickers.map((t) => ({ id: t.id, ticker: t.ticker, categoryId: t.categoryId }))}
+              onCategoriesChanged={handleCategoriesChanged}
+              onBatchAssign={handleBatchAssign}
+            />
+          </div>
+        )}
+
+        {/* Ticker Groups */}
         {tickers.length === 0 ? (
           <div className="text-center py-20">
             <Crosshair className="h-16 w-16 text-slate-700 mx-auto mb-4" />
@@ -266,21 +392,55 @@ export function ScannerDashboard() {
               Add a ticker above with your target price to start scanning for CSP opportunities.
             </p>
           </div>
-        ) : (
+        ) : groupedTickers.length === 0 || (categories.length === 0) ? (
+          // No categories defined, show flat list
           <div className="space-y-3">
-            {tickers.map((t) => (
-              <TickerRow
-                key={t.id}
-                ticker={t}
-                isScanning={scanningTickers.has(t.ticker)}
-                isExpanded={expandedTicker === t.ticker}
-                onToggleExpand={() =>
-                  setExpandedTicker(expandedTicker === t.ticker ? null : t.ticker)
-                }
-                onScan={() => handleScan(t.ticker)}
-                onDelete={() => handleDelete(t.ticker)}
-              />
-            ))}
+            {tickers.map(renderTickerRow)}
+          </div>
+        ) : (
+          // Grouped into category cards
+          <div className="grid gap-5 lg:grid-cols-2">
+            {groupedTickers.map((group) => {
+              const cc = getColorClasses(group.color);
+              const totalContracts = group.tickers.reduce((sum, t) => sum + (t.latestResults?.length || 0), 0);
+              const isUncategorized = group.categoryId === null;
+              return (
+                <div
+                  key={group.categoryId || '__uncategorized'}
+                  className={`rounded-xl border ${cc.border} bg-slate-900/30 overflow-hidden`}
+                >
+                  {/* Category Card Header */}
+                  <div className={`flex items-center gap-2 px-4 py-3 ${cc.headerBg} border-b ${cc.border}`}>
+                    {isUncategorized ? (
+                      <Folder className={`h-5 w-5 ${cc.accent}`} />
+                    ) : (
+                      <FolderOpen className={`h-5 w-5 ${cc.accent}`} />
+                    )}
+                    <h2 className={`text-base font-bold ${cc.headerText}`}>{group.categoryName}</h2>
+                    <span className="text-xs text-slate-500 ml-1">
+                      {group.tickers.length} ticker{group.tickers.length !== 1 ? 's' : ''}
+                    </span>
+                    {totalContracts > 0 && (
+                      <span className={`flex items-center gap-1 ml-auto text-xs px-2 py-0.5 rounded-full ${cc.badge}`}>
+                        <TrendingUp className="h-3 w-3" />
+                        {totalContracts} contract{totalContracts !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Tickers within this category */}
+                  {group.tickers.length > 0 ? (
+                    <div className="p-3 space-y-2">
+                      {group.tickers.map(renderTickerRow)}
+                    </div>
+                  ) : (
+                    <div className="px-4 py-6 text-center text-xs text-slate-600">
+                      No tickers in this category yet. Assign tickers using the Batch Assign tool above.
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 

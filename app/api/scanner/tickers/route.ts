@@ -28,6 +28,7 @@ export async function GET() {
   const tickers = await prisma.scanTicker.findMany({
     where: { userId: session.user.id },
     include: {
+      category: true,
       scanResults: {
         orderBy: { roiPerDay: 'desc' },
         take: 50,
@@ -47,6 +48,8 @@ export async function GET() {
       id: t.id,
       ticker: t.ticker,
       priceTarget: t.priceTarget,
+      categoryId: t.categoryId,
+      category: t.category ? { id: t.category.id, name: t.category.name, color: t.category.color } : null,
       createdAt: t.createdAt.toISOString(),
       updatedAt: t.updatedAt.toISOString(),
       latestResults: t.scanResults,
@@ -146,5 +149,51 @@ export async function DELETE(req: NextRequest) {
   } catch (error: any) {
     console.error('[SCANNER/TICKERS] DELETE error:', error);
     return NextResponse.json({ error: 'Failed to remove ticker' }, { status: 500 });
+  }
+}
+
+/**
+ * PATCH /api/scanner/tickers
+ * Body: { ticker: string, categoryId: string | null }
+ * Updates a ticker's category assignment.
+ */
+export async function PATCH(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  }
+
+  try {
+    const body = await req.json();
+    const ticker = (body?.ticker ?? '').toUpperCase().trim();
+    const categoryId = body?.categoryId ?? null;
+
+    if (!ticker) {
+      return NextResponse.json({ error: 'Ticker is required' }, { status: 400 });
+    }
+
+    // If setting a category, verify ownership
+    if (categoryId) {
+      const category = await prisma.scanCategory.findFirst({
+        where: { id: categoryId, userId: session.user.id },
+      });
+      if (!category) {
+        return NextResponse.json({ error: 'Category not found' }, { status: 404 });
+      }
+    }
+
+    const updated = await prisma.scanTicker.updateMany({
+      where: { userId: session.user.id, ticker },
+      data: { categoryId: categoryId || null },
+    });
+
+    if (updated.count === 0) {
+      return NextResponse.json({ error: 'Ticker not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ message: 'Category updated', ticker, categoryId });
+  } catch (error: any) {
+    console.error('[SCANNER/TICKERS] PATCH error:', error);
+    return NextResponse.json({ error: 'Failed to update category' }, { status: 500 });
   }
 }
