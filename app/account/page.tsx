@@ -8,7 +8,17 @@ import Link from 'next/link';
 export default function AccountPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [subStatus, setSubStatus] = useState<any>(null);
+  interface SubscriptionStatus {
+    subscription?: {
+      tierName: string;
+      cancelAtPeriodEnd: boolean;
+      currentPeriodStart: string;
+      currentPeriodEnd: string;
+      priceDisplay: string;
+    };
+    [key: string]: any;
+  }
+  const [subStatus, setSubStatus] = useState<SubscriptionStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [canceling, setCanceling] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');

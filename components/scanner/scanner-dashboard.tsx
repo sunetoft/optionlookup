@@ -323,7 +323,7 @@ export function ScannerDashboard() {
     <div className="min-h-screen bg-slate-950 text-slate-100">
       {/* Scanner Sub-header */}
       <div className="border-b border-slate-800 bg-slate-900/50">
-        <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between">
+        <div className="mx-auto max-w-[1600px] px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold flex items-center gap-2">
               <Crosshair className="h-6 w-6 text-amber-500" />
@@ -366,7 +366,7 @@ export function ScannerDashboard() {
         </div>
       </div>
 
-      <main className="mx-auto max-w-7xl px-4 py-8">
+      <main className="mx-auto max-w-[1600px] px-6 py-8">
         {/* Add Ticker Form */}
         <div className="mb-4">
           <AddTickerForm onAdd={handleAdd} tierInfo={tierInfo} />
@@ -399,7 +399,7 @@ export function ScannerDashboard() {
           </div>
         ) : (
           // Grouped into category cards
-          <div className="grid gap-5 lg:grid-cols-2">
+          <div className="grid gap-5 lg:grid-cols-2 2xl:grid-cols-3">
             {groupedTickers.map((group) => {
               const cc = getColorClasses(group.color);
               const totalContracts = group.tickers.reduce((sum, t) => sum + (t.latestResults?.length || 0), 0);

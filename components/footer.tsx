@@ -17,6 +17,8 @@ export function Footer() {
             <a
               key={site.href}
               href={site.href}
+              target="_blank"
+              rel="noopener noreferrer"
               className="text-xs text-muted-foreground transition-colors hover:text-foreground"
             >
               {site.label}

@@ -10,7 +10,8 @@ import { isAlpacaConfigured, fetchAlpacaATMStraddle, fetchAlpacaExpirationDates 
 import { hasActiveSubscription, isAdminUser, checkAnonymousAccess, recordAnonymousLookup, getClientIdentifier } from '@/lib/subscription';
 
 function getYF() {
-  return new (YahooFinance as any)({ suppressNotices: ['yahooSurvey'] });
+  // YahooFinance v2 default export is a class; suppressNotices silences the survey prompt
+  return new YahooFinance({ suppressNotices: ['yahooSurvey'] });
 }
 
 function delay(ms: number) {
