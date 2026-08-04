@@ -16,7 +16,7 @@ analyses.
 **CSP Scanner** (added Aug 2026): Multi-tenant scanner where users create
 ticker watchlists with USD price targets. A scheduled cron (2× daily during
 NYSE hours) scans option chains for CSP puts with ROI ≥ 0.1%/day, strike ≤
-user target, DTE ~30-60 (loose). Results replace on each scan. Discord
+user target, DTE ~28-62 (loose, ±2 from 30-60 sweet spot). Results replace on each scan. Discord
 notifications + email digests sent after each scan. Admin heatmap shows
 best CSP opportunities across all users.
 
@@ -155,7 +155,7 @@ Multi-tenant scanner at `/scanner`. Users add tickers with USD price targets.
 Scanner runs 2× daily during NYSE hours and finds CSP puts matching:
 - ROI ≥ 0.1% per trading day
 - Strike ≤ user's price target
-- DTE ~30-60 (loose — contracts outside range shown with badge)
+- DTE ~28-62 (loose — 30-60 sweet spot, ±2 tolerance, contracts outside sweet spot shown with badge)
 - EM as warning indicator (not a hard filter)
 - Earnings warning if contract expires after next earnings date
 
@@ -189,8 +189,17 @@ Enforced via `canAddScannerTicker()` in `lib/subscription.ts`.
 
 `scanTickerForCSP(ticker, priceTarget)` → returns `{ contracts, currentPrice, earningsDate, stats }`.
 
-Flow: Yahoo quote (price + earnings) → Yahoo options scan (per-expiration puts) → Alpaca failover.
-Filters: bid > 0, strike ≤ priceTarget, ROI ≥ 0.1%/day. EM calculated per-expiration for warning only.
+Flow: Yahoo quote (price + earnings) → Alpaca price fallback if Yahoo 429 → Yahoo options scan (per-expiration puts) → Alpaca failover (options).
+When Yahoo quote fails (429), skips Yahoo options entirely and goes straight to Alpaca.
+Filters: bid > 0, strike ≤ priceTarget, ROI ≥ 0.1%/day, DTE 28-62 (sweet spot 30-60 with ±2 tolerance).
+EM calculated per-expiration from already-fetched options data (no redundant API call). Used for warning only.
+Rejection stats logged per ticker: noBid, aboveTarget, lowRoi, lowStrike.
+
+### Cron Scan (`app/api/scanner/cron/route.ts`)
+
+Scans tickers in **parallel batches of 5** (was sequential — caused timeouts with 29 tickers).
+Uses `Promise.allSettled` so one ticker failure doesn't block the batch.
+Hermes cron curl uses `--max-time 300` (scan takes ~2-3 min via Alpaca).
 
 ### Scanner Notifications (`lib/scanner-notifications.ts`)
 

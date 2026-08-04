@@ -14,6 +14,7 @@ import {
   fetchAlpacaExpirationDates,
   fetchAlpacaPutOptions,
   fetchAlpacaATMStraddle,
+  fetchAlpacaLatestPrice,
   AlpacaOptionContract,
 } from '@/lib/alpaca-client';
 
@@ -65,8 +66,10 @@ function delay(ms: number) {
 // ── Constants ────────────────────────────────────────────────────────
 
 const ROI_THRESHOLD = 0.1;  // 0.1% per trading day
-const DTE_MIN = 30;
-const DTE_MAX = 60;
+const DTE_MIN = 28;   // loose: 30-2 (per user's "loose = ±2" definition)
+const DTE_MAX = 62;   // loose: 60+2
+const DTE_SWEET_MIN = 30;  // for badge display only
+const DTE_SWEET_MAX = 60;  // for badge display only
 const MAX_STRIKE_DEPTH = 0.5;  // don't look below 50% of current price
 
 // ── Core scan function ───────────────────────────────────────────────
@@ -93,6 +96,7 @@ export async function scanTickerForCSP(
   let currentPrice = 0;
   let earningsDate: string | null = null;
   let earningsDaysAway: number | null = null;
+  let yahooFailed = false;  // if Yahoo quote fails, skip Yahoo options scan too
 
   try {
     const yf = await getYF();
@@ -115,41 +119,68 @@ export async function scanTickerForCSP(
     console.log(`[SCANNER] ${upperTicker} | Price: $${currentPrice} | Earnings: ${earningsDate ?? 'N/A'}`);
   } catch (err: any) {
     console.error(`[SCANNER] Yahoo quote failed for ${upperTicker}:`, err?.message);
-    return { ...emptyResult, error: `Failed to fetch quote: ${err?.message}` };
+    yahooFailed = true;
+    // Alpaca fallback for price quote (Yahoo frequently returns 429)
+    if (isAlpacaConfigured()) {
+      try {
+        const alpacaPrice = await fetchAlpacaLatestPrice(upperTicker);
+        if (alpacaPrice > 0) {
+          currentPrice = alpacaPrice;
+          console.log(`[SCANNER] ${upperTicker} | Price: $${currentPrice} (via Alpaca fallback) | Earnings: N/A`);
+        } else {
+          return { ...emptyResult, error: `Both Yahoo and Alpaca failed to fetch price: ${err?.message}` };
+        }
+      } catch (alpacaErr: any) {
+        return { ...emptyResult, error: `Yahoo quote failed: ${err?.message}; Alpaca fallback also failed: ${alpacaErr?.message}` };
+      }
+    } else {
+      return { ...emptyResult, error: `Failed to fetch quote: ${err?.message}` };
+    }
   }
 
   // Step 2: Scan option chains (Yahoo primary, Alpaca failover)
   // Yahoo often returns bid=0 for OTM puts — if we get 0 contracts with high
   // noBid rejections, fall back to Alpaca for real bid data.
+  // If Yahoo quote already failed (429), skip straight to Alpaca.
   let scanData: { contracts: ScannerContract[]; stats: { datesScanned: number; totalPutsChecked: number; rejections: { noBid: number; aboveTarget: number; lowRoi: number; lowStrike: number } } };
 
-  try {
-    scanData = await scanViaYahoo(upperTicker, currentPrice, priceTarget, earningsDate);
-
-    // Smart failover: if Yahoo returned 0 contracts but many puts were rejected
-    // for "noBid", the data is likely stale — retry via Alpaca
-    if (scanData.contracts.length === 0 && scanData.stats.rejections.noBid > 10 && isAlpacaConfigured()) {
-      console.log(`[SCANNER] ${upperTicker}: Yahoo returned 0 contracts (${scanData.stats.rejections.noBid} noBid rejections) — retrying via Alpaca`);
-      try {
-        const alpacaData = await scanViaAlpaca(upperTicker, currentPrice, priceTarget, earningsDate);
-        if (alpacaData.contracts.length > 0 || alpacaData.stats.totalPutsChecked > 0) {
-          scanData = alpacaData;
-        }
-      } catch (alpacaErr: any) {
-        console.warn(`[SCANNER] ${upperTicker}: Alpaca failover failed: ${alpacaErr?.message}`);
-      }
+  if (yahooFailed && isAlpacaConfigured()) {
+    // Yahoo is rate-limited — go straight to Alpaca
+    try {
+      scanData = await scanViaAlpaca(upperTicker, currentPrice, priceTarget, earningsDate);
+    } catch (alpacaErr: any) {
+      console.error(`[SCANNER] Alpaca also failed for ${upperTicker}: ${alpacaErr?.message}`);
+      return { ...emptyResult, currentPrice, earningsDate, earningsDaysAway, error: 'Both Yahoo and Alpaca failed' };
     }
-  } catch (yahooErr: any) {
-    console.warn(`[SCANNER] Yahoo scan failed for ${upperTicker}: ${yahooErr?.message}`);
-    if (isAlpacaConfigured()) {
-      try {
-        scanData = await scanViaAlpaca(upperTicker, currentPrice, priceTarget, earningsDate);
-      } catch (alpacaErr: any) {
-        console.error(`[SCANNER] Alpaca also failed for ${upperTicker}: ${alpacaErr?.message}`);
-        return { ...emptyResult, currentPrice, earningsDate, earningsDaysAway, error: 'Both Yahoo and Alpaca failed' };
+  } else {
+    try {
+      scanData = await scanViaYahoo(upperTicker, currentPrice, priceTarget, earningsDate);
+
+      // Smart failover: if Yahoo returned 0 contracts but many puts were rejected
+      // for "noBid", the data is likely stale — retry via Alpaca
+      if (scanData.contracts.length === 0 && scanData.stats.rejections.noBid > 10 && isAlpacaConfigured()) {
+        console.log(`[SCANNER] ${upperTicker}: Yahoo returned 0 contracts (${scanData.stats.rejections.noBid} noBid rejections) — retrying via Alpaca`);
+        try {
+          const alpacaData = await scanViaAlpaca(upperTicker, currentPrice, priceTarget, earningsDate);
+          if (alpacaData.contracts.length > 0 || alpacaData.stats.totalPutsChecked > 0) {
+            scanData = alpacaData;
+          }
+        } catch (alpacaErr: any) {
+          console.warn(`[SCANNER] ${upperTicker}: Alpaca failover failed: ${alpacaErr?.message}`);
+        }
       }
-    } else {
-      return { ...emptyResult, currentPrice, earningsDate, earningsDaysAway, error: `Yahoo scan failed: ${yahooErr?.message}` };
+    } catch (yahooErr: any) {
+      console.warn(`[SCANNER] Yahoo scan failed for ${upperTicker}: ${yahooErr?.message}`);
+      if (isAlpacaConfigured()) {
+        try {
+          scanData = await scanViaAlpaca(upperTicker, currentPrice, priceTarget, earningsDate);
+        } catch (alpacaErr: any) {
+          console.error(`[SCANNER] Alpaca also failed for ${upperTicker}: ${alpacaErr?.message}`);
+          return { ...emptyResult, currentPrice, earningsDate, earningsDaysAway, error: 'Both Yahoo and Alpaca failed' };
+        }
+      } else {
+        return { ...emptyResult, currentPrice, earningsDate, earningsDaysAway, error: `Yahoo scan failed: ${yahooErr?.message}` };
+      }
     }
   }
 
@@ -157,7 +188,9 @@ export async function scanTickerForCSP(
   contracts.sort((a, b) => b.roiPerDay - a.roiPerDay);
   const bestContract = contracts.length > 0 ? contracts[0] : null;
 
-  console.log(`[SCANNER] ${upperTicker} done: ${contracts.length} qualifying contracts`);
+  console.log(`[SCANNER] ${upperTicker} done: ${contracts.length} qualifying contracts` +
+    ` | rejections: noBid=${scanData.stats.rejections.noBid}, aboveTarget=${scanData.stats.rejections.aboveTarget}, lowRoi=${scanData.stats.rejections.lowRoi}, lowStrike=${scanData.stats.rejections.lowStrike}` +
+    ` | ${scanData.stats.totalPutsChecked} puts checked across ${scanData.stats.datesScanned} dates`);
 
   return {
     ticker: upperTicker,
@@ -212,7 +245,9 @@ async function scanViaYahoo(
       const expStr = expDate.toISOString().split('T')[0];
 
       // EM calculation for this expiration (warning only, not a filter)
-      const emLowerBound = await calcEMLowerBoundYahoo(yf, ticker, expStr, dte, currentPrice);
+      // Reuse the already-fetched options data — no redundant API call
+      const calls = putsData?.options?.[0]?.calls ?? [];
+      const emLowerBound = calcEMLowerBound(calls, puts, currentPrice);
 
       // Earnings warning: contract expires after earnings
       const earningsWarning = futureEarningsValid
@@ -235,8 +270,8 @@ async function scanViaYahoo(
         // EM warning: strike is inside the expected move range
         const emWarning = emLowerBound > 0 && strike > emLowerBound;
 
-        // DTE range badge
-        const dteInRange = dte >= DTE_MIN && dte <= DTE_MAX;
+        // DTE range badge (sweet spot 30-60, loose range 28-62)
+        const dteInRange = dte >= DTE_SWEET_MIN && dte <= DTE_SWEET_MAX;
 
         contracts.push({
           strike,
@@ -270,21 +305,16 @@ async function scanViaYahoo(
 }
 
 /**
- * Calculate EM lower bound via ATM straddle (Yahoo options data).
+ * Calculate EM lower bound from pre-fetched ATM straddle data.
  * Used for WARNING only — not as a strike filter.
+ * (Previously made a redundant Yahoo API call — now reuses already-fetched options data.)
  */
-async function calcEMLowerBoundYahoo(
-  yf: any,
-  ticker: string,
-  expStr: string,
-  dte: number,
+function calcEMLowerBound(
+  calls: any[],
+  puts: any[],
   currentPrice: number,
-): Promise<number> {
+): number {
   try {
-    const optData: any = await yf.options(ticker, { date: new Date(expStr + 'T00:00:00Z') });
-    const calls = optData?.options?.[0]?.calls ?? [];
-    const puts = optData?.options?.[0]?.puts ?? [];
-
     // Find ATM call and put
     let atmCall = calls[0];
     let atmPut = puts[0];
@@ -385,8 +415,9 @@ async function scanViaAlpaca(
         ? new Date(expStr + 'T00:00:00Z') > futureEarningsValid
         : false;
 
+      // DTE range badge (sweet spot 30-60, loose range 28-62)
+      const dteInRange = dte >= DTE_SWEET_MIN && dte <= DTE_SWEET_MAX;
       const emWarning = emLowerBound > 0 && strike > emLowerBound;
-      const dteInRange = dte >= DTE_MIN && dte <= DTE_MAX;
 
       contracts.push({
         strike,

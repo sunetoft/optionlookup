@@ -53,11 +53,32 @@ export async function POST(req: NextRequest) {
 
   console.log(`[SCANNER/CRON] ${allScanTickers.length} scan tickers across ${tickerMap.size} unique tickers`);
 
-  // Scan each unique ticker
-  for (const [ticker, info] of tickerMap) {
-    totalTickers++;
-    try {
-      const result = await scanTickerForCSP(ticker, info.priceTarget);
+  // Scan tickers in parallel batches to avoid timeout (5 at a time)
+  const BATCH_SIZE = 5;
+  const tickerEntries = Array.from(tickerMap.entries());
+
+  for (let i = 0; i < tickerEntries.length; i += BATCH_SIZE) {
+    const batch = tickerEntries.slice(i, i + BATCH_SIZE);
+    console.log(`[SCANNER/CRON] Batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(tickerEntries.length / BATCH_SIZE)}: ${batch.map(([t]) => t).join(', ')}`);
+
+    // Scan this batch in parallel
+    const batchResults = await Promise.allSettled(
+      batch.map(async ([ticker, info]) => {
+        const result = await scanTickerForCSP(ticker, info.priceTarget);
+        return { ticker, info, result };
+      }),
+    );
+
+    // Process batch results sequentially (DB writes)
+    for (const settled of batchResults) {
+      if (settled.status === 'rejected') {
+        totalErrors++;
+        console.error(`[SCANNER/CRON] Batch error:`, settled.reason?.message);
+        continue;
+      }
+
+      const { ticker, info, result } = settled.value;
+      totalTickers++;
 
       if (result.error) {
         totalErrors++;
@@ -119,9 +140,6 @@ export async function POST(req: NextRequest) {
         }
         userResults.get(user.id)!.results.push({ ticker, result });
       }
-    } catch (err: any) {
-      totalErrors++;
-      console.error(`[SCANNER/CRON] ${ticker} error:`, err?.message);
     }
   }
 

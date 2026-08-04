@@ -210,3 +210,28 @@ export async function fetchAlpacaATMStraddle(
 export function isAlpacaConfigured(): boolean {
   return !!(process.env.ALPACA_API_KEY && process.env.ALPACA_API_SECRET);
 }
+
+/**
+ * Fetch the latest stock price from Alpaca (fallback when Yahoo is rate-limited).
+ * Uses the latest trade endpoint, falls back to quote midpoint.
+ */
+export async function fetchAlpacaLatestPrice(ticker: string): Promise<number> {
+  const headers = getHeaders();
+  const url = `${ALPACA_DATA_URL}/v2/stocks/${ticker}/trades/latest`;
+
+  const res = await fetch(url, { headers });
+  if (!res.ok) {
+    // Try quotes endpoint as fallback
+    const quoteUrl = `${ALPACA_DATA_URL}/v2/stocks/${ticker}/quotes/latest`;
+    const quoteRes = await fetch(quoteUrl, { headers });
+    if (!quoteRes.ok) return 0;
+    const quoteData = await quoteRes.json();
+    const bp = quoteData?.quote?.bp ?? 0;
+    const ap = quoteData?.quote?.ap ?? 0;
+    if (bp > 0 && ap > 0) return (bp + ap) / 2;
+    return bp || ap || 0;
+  }
+
+  const data = await res.json();
+  return data?.trade?.p ?? 0;
+}
