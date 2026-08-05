@@ -399,7 +399,7 @@ export function ScannerDashboard() {
           </div>
         ) : (
           // Grouped into category cards
-          <div className="grid gap-5 lg:grid-cols-2 2xl:grid-cols-3">
+          <div className="grid gap-5">
             {groupedTickers.map((group) => {
               const cc = getColorClasses(group.color);
               const totalContracts = group.tickers.reduce((sum, t) => sum + (t.latestResults?.length || 0), 0);
