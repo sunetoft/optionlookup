@@ -309,6 +309,21 @@ export function DashboardContent() {
     }
   };
 
+  // Deep-link support: auto-analyze a ticker passed via ?ticker= (e.g. from
+  // another bunnystocks app like GapUpTracker). Runs once on mount.
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      const t = (url.searchParams.get('ticker') ?? '').toUpperCase().trim();
+      if (t && t.length <= 10 && /^[A-Z0-9.\-^]+$/.test(t)) {
+        handleAnalyze(t);
+      }
+    } catch (e: any) {
+      console.error('Failed to parse ticker deep-link:', e);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   if (status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center">
