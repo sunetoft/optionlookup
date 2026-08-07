@@ -1,26 +1,38 @@
 /**
- * CSP Scanner Engine — reusable scanning logic for the multi-tenant scanner.
+ * Wheel Scanner Engine — reusable scanning logic for the multi-tenant scanner.
  *
- * Extracted from app/api/stock/options/route.ts with key differences:
- * - Strike filter: strike ≤ user price target (not EM lower bound)
- * - ROI threshold: 0.1%/day
- * - DTE: loose (no hard cutoff, badges outside 30-60 range)
- * - EM: calculated but used as WARNING indicator only, not a filter
- * - Earnings: warning flag if contract expires after next earnings date
+ * Scans BOTH strategies in a single pass per ticker:
+ *  - CSP (put, "PUT"):  strike ≤ user price target, ROI bid/strike/dte, DTE ~30-60 (loose ±2)
+ *  - CC  (call, "CALL"): OTM calls above current price, ROI bid/currentPrice/dte, DTE ≤ 90, min 7
+ *
+ * Yahoo returns puts+calls in one call per expiration, so both strategies come
+ * from the same API requests (no redundant round-trips).
+ *
+ * Strikes:
+ *  - PUT:  strike ≤ price target, not below 50% of current price
+ *  - CALL: OTM calls above current price, up to 50% OTM (price cap)
+ *
+ * Warnings:
+ *  - Earnings: contract DTE extends past next earnings date (hard requirement)
+ *  - EM (put):  strike is inside the expected move (above EM lower bound)
+ *  - EM (call): strike is inside the expected move (below EM upper bound)
  */
 
 import {
   isAlpacaConfigured,
   fetchAlpacaExpirationDates,
   fetchAlpacaPutOptions,
+  fetchAlpacaCallOptions,
   fetchAlpacaATMStraddle,
   fetchAlpacaLatestPrice,
-  AlpacaOptionContract,
 } from '@/lib/alpaca-client';
 
 // ── Types ────────────────────────────────────────────────────────────
 
+export type OptionType = 'PUT' | 'CALL';
+
 export interface ScannerContract {
+  optionType: OptionType;
   strike: number;
   expiration: string;
   dte: number;
@@ -42,12 +54,17 @@ export interface ScannerResult {
   currentPrice: number;
   earningsDate: string | null;
   earningsDaysAway: number | null;
-  contracts: ScannerContract[];
+  putContracts: ScannerContract[];
+  callContracts: ScannerContract[];
+  contracts: ScannerContract[];  // combined (put + call)
   bestContract: ScannerContract | null;
+  bestPut: ScannerContract | null;
+  bestCall: ScannerContract | null;
   stats: {
     datesScanned: number;
     totalPutsChecked: number;
-    rejections: { noBid: number; aboveTarget: number; lowRoi: number; lowStrike: number };
+    totalCallsChecked: number;
+    rejections: { noBid: number; aboveTarget: number; lowRoi: number; lowStrike: number; itmCall: number };
   };
   error?: string;
 }
@@ -66,15 +83,24 @@ function delay(ms: number) {
 // ── Constants ────────────────────────────────────────────────────────
 
 const ROI_THRESHOLD = 0.1;  // 0.1% per trading day
-const DTE_MIN = 28;   // loose: 30-2 (per user's "loose = ±2" definition)
-const DTE_MAX = 62;   // loose: 60+2
+
+// CSP puts (strike = collateral)
+const PUT_DTE_MIN = 28;   // loose: 30-2 (per user's "loose = ±2" definition)
+const PUT_DTE_MAX = 62;   // loose: 60+2
+
+// Covered calls (share price = collateral)
+const CALL_DTE_MIN = 7;   // avoid 0-DTE / same-week expiry noise
+const CALL_DTE_MAX = 90;  // user hard requirement: max DTE 90
+
 const DTE_SWEET_MIN = 30;  // for badge display only
 const DTE_SWEET_MAX = 60;  // for badge display only
-const MAX_STRIKE_DEPTH = 0.5;  // don't look below 50% of current price
+
+const MAX_STRIKE_DEPTH = 0.5;  // don't look below 50% of current price (puts)
+const MAX_CALL_OTM = 1.5;      // don't look above 150% of current price (calls)
 
 // ── Core scan function ───────────────────────────────────────────────
 
-export async function scanTickerForCSP(
+export async function scanTicker(
   ticker: string,
   priceTarget: number,
 ): Promise<ScannerResult> {
@@ -87,9 +113,13 @@ export async function scanTickerForCSP(
     currentPrice: 0,
     earningsDate: null,
     earningsDaysAway: null,
+    putContracts: [],
+    callContracts: [],
     contracts: [],
     bestContract: null,
-    stats: { datesScanned: 0, totalPutsChecked: 0, rejections: { noBid: 0, aboveTarget: 0, lowRoi: 0, lowStrike: 0 } },
+    bestPut: null,
+    bestCall: null,
+    stats: { datesScanned: 0, totalPutsChecked: 0, totalCallsChecked: 0, rejections: { noBid: 0, aboveTarget: 0, lowRoi: 0, lowStrike: 0, itmCall: 0 } },
   };
 
   // Step 1: Get current price + earnings date from Yahoo
@@ -139,13 +169,9 @@ export async function scanTickerForCSP(
   }
 
   // Step 2: Scan option chains (Yahoo primary, Alpaca failover)
-  // Yahoo often returns bid=0 for OTM puts — if we get 0 contracts with high
-  // noBid rejections, fall back to Alpaca for real bid data.
-  // If Yahoo quote already failed (429), skip straight to Alpaca.
-  let scanData: { contracts: ScannerContract[]; stats: { datesScanned: number; totalPutsChecked: number; rejections: { noBid: number; aboveTarget: number; lowRoi: number; lowStrike: number } } };
+  let scanData: ReturnType<typeof emptyScanData>;
 
   if (yahooFailed && isAlpacaConfigured()) {
-    // Yahoo is rate-limited — go straight to Alpaca
     try {
       scanData = await scanViaAlpaca(upperTicker, currentPrice, priceTarget, earningsDate);
     } catch (alpacaErr: any) {
@@ -156,13 +182,13 @@ export async function scanTickerForCSP(
     try {
       scanData = await scanViaYahoo(upperTicker, currentPrice, priceTarget, earningsDate);
 
-      // Smart failover: if Yahoo returned 0 contracts but many puts were rejected
-      // for "noBid", the data is likely stale — retry via Alpaca
+      // Smart failover: if Yahoo returned 0 contracts but many were rejected for
+      // "noBid", the data is likely stale — retry via Alpaca
       if (scanData.contracts.length === 0 && scanData.stats.rejections.noBid > 10 && isAlpacaConfigured()) {
         console.log(`[SCANNER] ${upperTicker}: Yahoo returned 0 contracts (${scanData.stats.rejections.noBid} noBid rejections) — retrying via Alpaca`);
         try {
           const alpacaData = await scanViaAlpaca(upperTicker, currentPrice, priceTarget, earningsDate);
-          if (alpacaData.contracts.length > 0 || alpacaData.stats.totalPutsChecked > 0) {
+          if (alpacaData.contracts.length > 0 || alpacaData.stats.totalPutsChecked + alpacaData.stats.totalCallsChecked > 0) {
             scanData = alpacaData;
           }
         } catch (alpacaErr: any) {
@@ -184,13 +210,21 @@ export async function scanTickerForCSP(
     }
   }
 
-  const contracts = scanData.contracts;
+  const putContracts = scanData.putContracts;
+  const callContracts = scanData.callContracts;
+  const contracts = [...putContracts, ...callContracts];
+
+  putContracts.sort((a, b) => b.roiPerDay - a.roiPerDay);
+  callContracts.sort((a, b) => b.roiPerDay - a.roiPerDay);
   contracts.sort((a, b) => b.roiPerDay - a.roiPerDay);
+
+  const bestPut = putContracts.length > 0 ? putContracts[0] : null;
+  const bestCall = callContracts.length > 0 ? callContracts[0] : null;
   const bestContract = contracts.length > 0 ? contracts[0] : null;
 
-  console.log(`[SCANNER] ${upperTicker} done: ${contracts.length} qualifying contracts` +
-    ` | rejections: noBid=${scanData.stats.rejections.noBid}, aboveTarget=${scanData.stats.rejections.aboveTarget}, lowRoi=${scanData.stats.rejections.lowRoi}, lowStrike=${scanData.stats.rejections.lowStrike}` +
-    ` | ${scanData.stats.totalPutsChecked} puts checked across ${scanData.stats.datesScanned} dates`);
+  console.log(`[SCANNER] ${upperTicker} done: ${putContracts.length} puts + ${callContracts.length} calls` +
+    ` | rejections: noBid=${scanData.stats.rejections.noBid}, aboveTarget=${scanData.stats.rejections.aboveTarget}, lowRoi=${scanData.stats.rejections.lowRoi}, lowStrike=${scanData.stats.rejections.lowStrike}, itmCall=${scanData.stats.rejections.itmCall}` +
+    ` | ${scanData.stats.totalPutsChecked} puts + ${scanData.stats.totalCallsChecked} calls checked across ${scanData.stats.datesScanned} dates`);
 
   return {
     ticker: upperTicker,
@@ -198,9 +232,29 @@ export async function scanTickerForCSP(
     currentPrice,
     earningsDate,
     earningsDaysAway,
+    putContracts,
+    callContracts,
     contracts,
     bestContract,
+    bestPut,
+    bestCall,
     stats: scanData.stats,
+  };
+}
+
+// ── Shared empty stats ───────────────────────────────────────────────
+
+function emptyScanData() {
+  return {
+    putContracts: [] as ScannerContract[],
+    callContracts: [] as ScannerContract[],
+    contracts: [] as ScannerContract[],
+    stats: {
+      datesScanned: 0,
+      totalPutsChecked: 0,
+      totalCallsChecked: 0,
+      rejections: { noBid: 0, aboveTarget: 0, lowRoi: 0, lowStrike: 0, itmCall: 0 },
+    },
   };
 }
 
@@ -211,7 +265,7 @@ async function scanViaYahoo(
   currentPrice: number,
   priceTarget: number,
   earningsDate: string | null,
-): Promise<{ contracts: ScannerContract[]; stats: { datesScanned: number; totalPutsChecked: number; rejections: { noBid: number; aboveTarget: number; lowRoi: number; lowStrike: number } } }> {
+): Promise<ReturnType<typeof emptyScanData>> {
   const yf = await getYF();
   const now = new Date();
 
@@ -226,68 +280,115 @@ async function scanViaYahoo(
   const futureEarnings = earningsDate ? new Date(earningsDate) : null;
   const futureEarningsValid = futureEarnings && futureEarnings > now ? futureEarnings : null;
 
-  const contracts: ScannerContract[] = [];
-  const rejections = { noBid: 0, aboveTarget: 0, lowRoi: 0, lowStrike: 0 };
+  const putContracts: ScannerContract[] = [];
+  const callContracts: ScannerContract[] = [];
+  const rejections = { noBid: 0, aboveTarget: 0, lowRoi: 0, lowStrike: 0, itmCall: 0 };
   let totalPutsChecked = 0;
+  let totalCallsChecked = 0;
   let datesScanned = 0;
 
   for (const expDate of allDates) {
     try {
       if (datesScanned > 0) await delay(300);
 
-      const putsData: any = await yf.options(ticker, { date: expDate });
-      const puts = putsData?.options?.[0]?.puts ?? [];
-
       const dte = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-      if (dte < DTE_MIN || dte > DTE_MAX) continue;
+
+      // Skip dates outside BOTH strategies' ranges (avoids useless API calls)
+      const withinPutRange = dte >= PUT_DTE_MIN && dte <= PUT_DTE_MAX;
+      const withinCallRange = dte >= CALL_DTE_MIN && dte <= CALL_DTE_MAX;
+      if (!withinPutRange && !withinCallRange) continue;
+
+      const chainData: any = await yf.options(ticker, { date: expDate });
+      const puts = chainData?.options?.[0]?.puts ?? [];
+      const calls = chainData?.options?.[0]?.calls ?? [];
 
       datesScanned++;
       const expStr = expDate.toISOString().split('T')[0];
 
-      // EM calculation for this expiration (warning only, not a filter)
-      // Reuse the already-fetched options data — no redundant API call
-      const calls = putsData?.options?.[0]?.calls ?? [];
-      const emLowerBound = calcEMLowerBound(calls, puts, currentPrice);
+      // EM bounds for this expiration (warnings only, not filters)
+      const { emLowerBound, emUpperBound } = calcEMBounds(calls, puts, currentPrice);
 
       // Earnings warning: contract expires after earnings
       const earningsWarning = futureEarningsValid
         ? new Date(expStr + 'T00:00:00Z') > futureEarningsValid
         : false;
 
-      for (const put of puts) {
-        const strike = put?.strike ?? 0;
-        const bid = put?.bid ?? 0;
-        if (strike <= 0 || dte <= 0) continue;
-        totalPutsChecked++;
+      // DTE range badge (sweet spot 30-60)
+      const dteInRange = dte >= DTE_SWEET_MIN && dte <= DTE_SWEET_MAX;
 
-        if (strike < currentPrice * MAX_STRIKE_DEPTH) { rejections.lowStrike++; continue; }
-        if (bid <= 0) { rejections.noBid++; continue; }
-        if (strike > priceTarget) { rejections.aboveTarget++; continue; }
+      // ── CSP puts ──
+      if (withinPutRange) {
+        for (const put of puts) {
+          const strike = put?.strike ?? 0;
+          const bid = put?.bid ?? 0;
+          if (strike <= 0 || dte <= 0) continue;
+          totalPutsChecked++;
 
-        const roiPerDay = (bid / strike / dte) * 100;
-        if (roiPerDay < ROI_THRESHOLD) { rejections.lowRoi++; continue; }
+          if (strike < currentPrice * MAX_STRIKE_DEPTH) { rejections.lowStrike++; continue; }
+          if (bid <= 0) { rejections.noBid++; continue; }
+          if (strike > priceTarget) { rejections.aboveTarget++; continue; }
 
-        // EM warning: strike is inside the expected move range
-        const emWarning = emLowerBound > 0 && strike > emLowerBound;
+          const roiPerDay = (bid / strike / dte) * 100;
+          if (roiPerDay < ROI_THRESHOLD) { rejections.lowRoi++; continue; }
 
-        // DTE range badge (sweet spot 30-60, loose range 28-62)
-        const dteInRange = dte >= DTE_SWEET_MIN && dte <= DTE_SWEET_MAX;
+          const emWarning = emLowerBound > 0 && strike > emLowerBound;
 
-        contracts.push({
-          strike,
-          expiration: expStr,
-          dte,
-          bid,
-          ask: put?.ask ?? 0,
-          roiPerDay,
-          totalRoi: (bid / strike) * 100,
-          openInterest: put?.openInterest ?? 0,
-          volume: put?.volume ?? 0,
-          impliedVol: put?.impliedVolatility ?? 0,
-          earningsWarning,
-          emWarning,
-          dteInRange,
-        });
+          putContracts.push({
+            optionType: 'PUT',
+            strike,
+            expiration: expStr,
+            dte,
+            bid,
+            ask: put?.ask ?? 0,
+            roiPerDay,
+            totalRoi: (bid / strike) * 100,
+            openInterest: put?.openInterest ?? 0,
+            volume: put?.volume ?? 0,
+            impliedVol: put?.impliedVolatility ?? 0,
+            earningsWarning,
+            emWarning,
+            dteInRange,
+          });
+        }
+      }
+
+      // ── Covered calls ──
+      if (withinCallRange) {
+        for (const call of calls) {
+          const strike = call?.strike ?? 0;
+          const bid = call?.bid ?? 0;
+          if (strike <= 0 || dte <= 0) continue;
+          totalCallsChecked++;
+
+          // CC must be OTM: strike above current price
+          if (strike <= currentPrice) { rejections.itmCall++; continue; }
+          if (strike > currentPrice * MAX_CALL_OTM) { rejections.lowStrike++; continue; }
+          if (bid <= 0) { rejections.noBid++; continue; }
+
+          // CC collateral = shares you own (current price)
+          const roiPerDay = (bid / currentPrice / dte) * 100;
+          if (roiPerDay < ROI_THRESHOLD) { rejections.lowRoi++; continue; }
+
+          // EM warning: strike below EM upper bound → likely to be breached
+          const emWarning = emUpperBound > 0 && strike < emUpperBound;
+
+          callContracts.push({
+            optionType: 'CALL',
+            strike,
+            expiration: expStr,
+            dte,
+            bid,
+            ask: call?.ask ?? 0,
+            roiPerDay,
+            totalRoi: (bid / currentPrice) * 100,
+            openInterest: call?.openInterest ?? 0,
+            volume: call?.volume ?? 0,
+            impliedVol: call?.impliedVolatility ?? 0,
+            earningsWarning,
+            emWarning,
+            dteInRange: dte >= DTE_SWEET_MIN && dte <= DTE_SWEET_MAX,
+          });
+        }
       }
     } catch (dateErr: any) {
       const msg = dateErr?.message ?? '';
@@ -299,23 +400,25 @@ async function scanViaYahoo(
   }
 
   return {
-    contracts,
-    stats: { datesScanned, totalPutsChecked, rejections },
+    putContracts,
+    callContracts,
+    contracts: [...putContracts, ...callContracts],
+    stats: { datesScanned, totalPutsChecked, totalCallsChecked, rejections },
   };
 }
 
 /**
- * Calculate EM lower bound from pre-fetched ATM straddle data.
- * Used for WARNING only — not as a strike filter.
- * (Previously made a redundant Yahoo API call — now reuses already-fetched options data.)
+ * Calculate EM bounds from pre-fetched ATM straddle data.
+ * - emLowerBound = currentPrice - expectedMove  (put strike must be BELOW this)
+ * - emUpperBound = currentPrice + expectedMove  (call strike must be ABOVE this)
+ * Used for WARNING only — not a strike filter.
  */
-function calcEMLowerBound(
+function calcEMBounds(
   calls: any[],
   puts: any[],
   currentPrice: number,
-): number {
+): { emLowerBound: number; emUpperBound: number } {
   try {
-    // Find ATM call and put
     let atmCall = calls[0];
     let atmPut = puts[0];
     let minCallDiff = Infinity;
@@ -333,13 +436,16 @@ function calcEMLowerBound(
     const callPrice = atmCall?.lastPrice ?? atmCall?.bid ?? 0;
     const putPrice = atmPut?.lastPrice ?? atmPut?.bid ?? 0;
 
-    if (callPrice <= 0 && putPrice <= 0) return 0;
+    if (callPrice <= 0 && putPrice <= 0) return { emLowerBound: 0, emUpperBound: 0 };
 
     const straddle = callPrice + putPrice;
     const expectedMove = straddle * 0.85;
-    return currentPrice - expectedMove;
+    return {
+      emLowerBound: currentPrice - expectedMove,
+      emUpperBound: currentPrice + expectedMove,
+    };
   } catch {
-    return 0;
+    return { emLowerBound: 0, emUpperBound: 0 };
   }
 }
 
@@ -350,95 +456,163 @@ async function scanViaAlpaca(
   currentPrice: number,
   priceTarget: number,
   earningsDate: string | null,
-): Promise<{ contracts: ScannerContract[]; stats: { datesScanned: number; totalPutsChecked: number; rejections: { noBid: number; aboveTarget: number; lowRoi: number; lowStrike: number } } }> {
+): Promise<ReturnType<typeof emptyScanData>> {
   console.log(`[SCANNER/ALPACA] Scanning ${ticker}`);
   const now = new Date();
 
-  const allExpirations = await fetchAlpacaExpirationDates(ticker);
+  const putExpirations = await fetchAlpacaExpirationDates(ticker, 'put');
+  const callExpirations = await fetchAlpacaExpirationDates(ticker, 'call');
+  const allExpirations = [...new Set([...putExpirations, ...callExpirations])].sort();
   console.log(`[SCANNER/ALPACA] ${ticker}: ${allExpirations.length} expiration dates`);
 
   const futureEarnings = earningsDate ? new Date(earningsDate) : null;
   const futureEarningsValid = futureEarnings && futureEarnings > now ? futureEarnings : null;
 
-  const contracts: ScannerContract[] = [];
-  const rejections = { noBid: 0, aboveTarget: 0, lowRoi: 0, lowStrike: 0 };
+  const putContracts: ScannerContract[] = [];
+  const callContracts: ScannerContract[] = [];
+  const rejections = { noBid: 0, aboveTarget: 0, lowRoi: 0, lowStrike: 0, itmCall: 0 };
   let totalPutsChecked = 0;
+  let totalCallsChecked = 0;
   let datesScanned = 0;
 
   for (const expStr of allExpirations) {
     const expDate = new Date(expStr + 'T00:00:00Z');
     const dte = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    if (dte < DTE_MIN || dte > DTE_MAX) continue;
+
+    const withinPutRange = dte >= PUT_DTE_MIN && dte <= PUT_DTE_MAX;
+    const withinCallRange = dte >= CALL_DTE_MIN && dte <= CALL_DTE_MAX;
+    if (!withinPutRange && !withinCallRange) continue;
 
     datesScanned++;
 
     // EM via Alpaca ATM straddle (warning only)
     let emLowerBound = 0;
+    let emUpperBound = 0;
     try {
       const straddle = await fetchAlpacaATMStraddle(ticker, currentPrice, expStr);
       if (straddle) {
         const expectedMove = (straddle.callPrice + straddle.putPrice) * 0.85;
         emLowerBound = currentPrice - expectedMove;
+        emUpperBound = currentPrice + expectedMove;
       }
     } catch {
       // non-fatal — EM is warning only
     }
 
-    // Tight strike range: from deep OTM up to price target + small buffer
-    const minStrike = Math.floor(currentPrice * MAX_STRIKE_DEPTH);
-    const maxStrike = Math.ceil(Math.min(currentPrice, priceTarget) + 5);
+    const earningsWarning = futureEarningsValid
+      ? expDate > futureEarningsValid
+      : false;
 
-    if (maxStrike < minStrike) continue;
+    // ── CSP puts ──
+    if (withinPutRange) {
+      const minStrike = Math.floor(currentPrice * MAX_STRIKE_DEPTH);
+      const maxStrike = Math.ceil(Math.min(currentPrice, priceTarget) + 5);
+      if (maxStrike >= minStrike) {
+        const putsForExp = await fetchAlpacaPutOptions(ticker, {
+          expirationDateGte: expStr,
+          expirationDateLte: expStr,
+          strikePriceGte: minStrike,
+          strikePriceLte: maxStrike,
+          limit: 100,
+        });
 
-    const putsForExp = await fetchAlpacaPutOptions(ticker, {
-      expirationDateGte: expStr,
-      expirationDateLte: expStr,
-      strikePriceGte: minStrike,
-      strikePriceLte: maxStrike,
-      limit: 100,
-    });
+        console.log(`[SCANNER/ALPACA] ${ticker} ${expStr} DTE:${dte} Puts:${putsForExp.length}`);
 
-    console.log(`[SCANNER/ALPACA] ${ticker} ${expStr} DTE:${dte} Puts:${putsForExp.length}`);
+        for (const put of putsForExp) {
+          const { strike, bid } = put;
+          totalPutsChecked++;
 
-    for (const put of putsForExp) {
-      const { strike, bid } = put;
-      totalPutsChecked++;
+          if (strike < currentPrice * MAX_STRIKE_DEPTH) { rejections.lowStrike++; continue; }
+          if (bid <= 0) { rejections.noBid++; continue; }
+          if (strike > priceTarget) { rejections.aboveTarget++; continue; }
 
-      if (strike < currentPrice * MAX_STRIKE_DEPTH) { rejections.lowStrike++; continue; }
-      if (bid <= 0) { rejections.noBid++; continue; }
-      if (strike > priceTarget) { rejections.aboveTarget++; continue; }
+          const roiPerDay = (bid / strike / dte) * 100;
+          if (roiPerDay < ROI_THRESHOLD) { rejections.lowRoi++; continue; }
 
-      const roiPerDay = (bid / strike / dte) * 100;
-      if (roiPerDay < ROI_THRESHOLD) { rejections.lowRoi++; continue; }
+          const emWarning = emLowerBound > 0 && strike > emLowerBound;
 
-      const earningsWarning = futureEarningsValid
-        ? new Date(expStr + 'T00:00:00Z') > futureEarningsValid
-        : false;
+          putContracts.push({
+            optionType: 'PUT',
+            strike,
+            expiration: expStr,
+            dte,
+            bid,
+            ask: put.ask,
+            roiPerDay,
+            totalRoi: (bid / strike) * 100,
+            openInterest: put.openInterest,
+            volume: put.volume,
+            impliedVol: put.impliedVolatility,
+            earningsWarning,
+            emWarning,
+            dteInRange: dte >= DTE_SWEET_MIN && dte <= DTE_SWEET_MAX,
+          });
+        }
+      }
+    }
 
-      // DTE range badge (sweet spot 30-60, loose range 28-62)
-      const dteInRange = dte >= DTE_SWEET_MIN && dte <= DTE_SWEET_MAX;
-      const emWarning = emLowerBound > 0 && strike > emLowerBound;
+    // ── Covered calls ──
+    if (withinCallRange) {
+      const minStrike = Math.ceil(currentPrice + 0.01);
+      const maxStrike = Math.ceil(currentPrice * MAX_CALL_OTM);
+      if (maxStrike >= minStrike) {
+        const callsForExp = await fetchAlpacaCallOptions(ticker, {
+          expirationDateGte: expStr,
+          expirationDateLte: expStr,
+          strikePriceGte: minStrike,
+          strikePriceLte: maxStrike,
+          limit: 100,
+        });
 
-      contracts.push({
-        strike,
-        expiration: expStr,
-        dte,
-        bid,
-        ask: put.ask,
-        roiPerDay,
-        totalRoi: (bid / strike) * 100,
-        openInterest: put.openInterest,
-        volume: put.volume,
-        impliedVol: put.impliedVolatility,
-        earningsWarning,
-        emWarning,
-        dteInRange,
-      });
+        console.log(`[SCANNER/ALPACA] ${ticker} ${expStr} DTE:${dte} Calls:${callsForExp.length}`);
+
+        for (const call of callsForExp) {
+          const { strike, bid } = call;
+          totalCallsChecked++;
+
+          if (strike <= currentPrice) { rejections.itmCall++; continue; }
+          if (strike > currentPrice * MAX_CALL_OTM) { rejections.lowStrike++; continue; }
+          if (bid <= 0) { rejections.noBid++; continue; }
+
+          const roiPerDay = (bid / currentPrice / dte) * 100;
+          if (roiPerDay < ROI_THRESHOLD) { rejections.lowRoi++; continue; }
+
+          const emWarning = emUpperBound > 0 && strike < emUpperBound;
+
+          callContracts.push({
+            optionType: 'CALL',
+            strike,
+            expiration: expStr,
+            dte,
+            bid,
+            ask: call.ask,
+            roiPerDay,
+            totalRoi: (bid / currentPrice) * 100,
+            openInterest: call.openInterest,
+            volume: call.volume,
+            impliedVol: call.impliedVolatility,
+            earningsWarning,
+            emWarning,
+            dteInRange: dte >= DTE_SWEET_MIN && dte <= DTE_SWEET_MAX,
+          });
+        }
+      }
     }
   }
 
   return {
-    contracts,
-    stats: { datesScanned, totalPutsChecked, rejections },
+    putContracts,
+    callContracts,
+    contracts: [...putContracts, ...callContracts],
+    stats: { datesScanned, totalPutsChecked, totalCallsChecked, rejections },
   };
+}
+
+// Backwards-compat alias (CSP-only scanning) — returns the same unified result;
+// callers that only care about puts can read `result.putContracts`.
+export async function scanTickerForCSP(
+  ticker: string,
+  priceTarget: number,
+): Promise<ScannerResult> {
+  return scanTicker(ticker, priceTarget);
 }

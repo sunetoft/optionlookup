@@ -43,6 +43,7 @@ interface ScanRun {
   id: string;
   scanType: string;
   qualifiedPuts: number;
+  qualifiedCalls: number;
   currentPrice: number | null;
   earningsDate: string | null;
   scannedAt: string;
@@ -128,14 +129,16 @@ export function ScannerDashboard() {
       }
 
       const data = await res.json();
-      toast.success(`${ticker}: ${data.totalFound} contract${data.totalFound !== 1 ? 's' : ''} found`);
+      toast.success(
+        `${ticker}: ${data.totalPuts ?? 0} CSP + ${data.totalCalls ?? 0} CC contract${(data.totalFound ?? 0) !== 1 ? 's' : ''} found`
+      );
 
       setTickers((prev) =>
         prev.map((t) =>
           t.ticker === ticker
             ? {
                 ...t,
-                latestResults: data.contracts.map((c: any, i: number) => ({
+                latestResults: (data.contracts || []).map((c: any, i: number) => ({
                   ...c,
                   id: `scan-${Date.now()}-${i}`,
                   scannedAt: data.scannedAt,
@@ -144,7 +147,8 @@ export function ScannerDashboard() {
                   {
                     id: `run-${Date.now()}`,
                     scanType: 'manual',
-                    qualifiedPuts: data.totalFound,
+                    qualifiedPuts: data.totalPuts ?? data.totalFound ?? 0,
+                    qualifiedCalls: data.totalCalls ?? 0,
                     currentPrice: data.currentPrice,
                     earningsDate: data.earningsDate,
                     scannedAt: data.scannedAt,
@@ -389,7 +393,7 @@ export function ScannerDashboard() {
             <Crosshair className="h-16 w-16 text-slate-700 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-slate-400 mb-2">No tickers yet</h3>
             <p className="text-sm text-slate-500">
-              Add a ticker above with your target price to start scanning for CSP opportunities.
+              Add a ticker above with your target price to start scanning for CSP puts and covered calls.
             </p>
           </div>
         ) : groupedTickers.length === 0 || (categories.length === 0) ? (
@@ -449,12 +453,11 @@ export function ScannerDashboard() {
           <div className="flex items-start gap-3">
             <ShieldAlert className="h-5 w-5 text-slate-500 flex-shrink-0 mt-0.5" />
             <div className="text-sm text-slate-400 space-y-1">
-              <p><strong className="text-slate-300">How it works:</strong> Add tickers with your price target. The scanner runs twice daily (30 min after open, 60 min before close) and finds CSP puts with:</p>
+              <p><strong className="text-slate-300">How it works:</strong> Add tickers with your price target. The scanner runs twice daily (30 min after open, 60 min before close) and finds BOTH the wheel's legs:</p>
               <ul className="list-disc list-inside ml-2 space-y-0.5 text-xs">
-                <li>ROI ≥ 0.1% per trading day</li>
-                <li>Strike ≤ your price target</li>
-                <li>DTE ~30-60 days (loose — others shown with badge)</li>
-                <li>⚠️ Earnings warning if contract expires after earnings</li>
+                <li><strong className="text-sky-300">CSP Puts</strong> — ROI ≥ 0.1% per trading day, strike ≤ your price target, DTE ~30-60 days (loose)</li>
+                <li><strong className="text-violet-300">Covered Calls</strong> — OTM calls above current price, ROI ≥ 0.1%/day on shares owned, DTE ≤ 90</li>
+                <li>⚠️ Earnings warning if a contract's DTE extends past the next earnings date</li>
                 <li>⚠️ EM warning if strike is inside the Expected Move</li>
               </ul>
             </div>

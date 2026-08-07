@@ -57,6 +57,7 @@ export async function GET() {
         id: r.id,
         scanType: r.scanType,
         qualifiedPuts: r.qualifiedPuts,
+        qualifiedCalls: r.qualifiedCalls,
         currentPrice: r.currentPrice,
         earningsDate: r.earningsDate,
         scannedAt: r.scannedAt.toISOString(),

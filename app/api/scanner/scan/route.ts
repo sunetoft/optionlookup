@@ -4,13 +4,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { scanTickerForCSP } from '@/lib/scanner-engine';
+import { scanTicker as runTickerScan } from '@/lib/scanner-engine';
 
 /**
  * POST /api/scanner/scan
  * Body: { ticker: string }
  *
- * Manually triggers a scan for the user's ticker.
+ * Manually triggers a scan for the user's ticker (both CSP puts + covered calls).
  * Requires authentication. The ticker must exist in the user's ScanTicker watchlist.
  */
 export async function POST(req: NextRequest) {
@@ -36,8 +36,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Ticker not found in your watchlist' }, { status: 404 });
     }
 
-    // Run the scan
-    const result = await scanTickerForCSP(ticker, scanTicker.priceTarget);
+    // Run the scan (CSP + CC in a single pass)
+    const result = await runTickerScan(ticker, scanTicker.priceTarget);
 
     if (result.error) {
       return NextResponse.json({ error: result.error }, { status: 503 });
@@ -50,7 +50,9 @@ export async function POST(req: NextRequest) {
         ticker,
         scanType: 'manual',
         totalPuts: result.stats.totalPutsChecked,
-        qualifiedPuts: result.contracts.length,
+        qualifiedPuts: result.putContracts.length,
+        totalCalls: result.stats.totalCallsChecked,
+        qualifiedCalls: result.callContracts.length,
         currentPrice: result.currentPrice,
         earningsDate: result.earningsDate,
         scanTickerId: scanTicker.id,
@@ -62,12 +64,13 @@ export async function POST(req: NextRequest) {
       where: { scanTickerId: scanTicker.id },
     });
 
-    // Insert new results
+    // Insert new results (both puts and calls)
     if (result.contracts.length > 0) {
       await prisma.scanResult.createMany({
         data: result.contracts.map((c) => ({
           scanTickerId: scanTicker.id,
           scanRunId: scanRun.id,
+          optionType: c.optionType,
           strike: c.strike,
           expiration: c.expiration,
           dte: c.dte,
@@ -90,8 +93,14 @@ export async function POST(req: NextRequest) {
       earningsDate: result.earningsDate,
       earningsDaysAway: result.earningsDaysAway,
       contracts: result.contracts.slice(0, 50),
+      putContracts: result.putContracts.slice(0, 50),
+      callContracts: result.callContracts.slice(0, 50),
       totalFound: result.contracts.length,
+      totalPuts: result.putContracts.length,
+      totalCalls: result.callContracts.length,
       bestContract: result.bestContract,
+      bestPut: result.bestPut,
+      bestCall: result.bestCall,
       stats: result.stats,
       scannedAt: new Date().toISOString(),
     });

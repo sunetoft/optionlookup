@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { scanTickerForCSP, ScannerResult } from '@/lib/scanner-engine';
+import { scanTicker, ScannerResult } from '@/lib/scanner-engine';
 import { sendScannerDiscordNotification, sendScannerEmailDigest } from '@/lib/scanner-notifications';
 
 /**
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
     // Scan this batch in parallel
     const batchResults = await Promise.allSettled(
       batch.map(async ([ticker, info]) => {
-        const result = await scanTickerForCSP(ticker, info.priceTarget);
+        const result = await scanTicker(ticker, info.priceTarget);
         return { ticker, info, result };
       }),
     );
@@ -98,7 +98,9 @@ export async function POST(req: NextRequest) {
             ticker,
             scanType,
             totalPuts: result.stats.totalPutsChecked,
-            qualifiedPuts: result.contracts.length,
+            qualifiedPuts: result.putContracts.length,
+            totalCalls: result.stats.totalCallsChecked,
+            qualifiedCalls: result.callContracts.length,
             currentPrice: result.currentPrice,
             earningsDate: result.earningsDate,
             scanTickerId: user.scanTickerId,
@@ -116,6 +118,7 @@ export async function POST(req: NextRequest) {
             data: result.contracts.map((c) => ({
               scanTickerId: user.scanTickerId,
               scanRunId: scanRun.id,
+              optionType: c.optionType,
               strike: c.strike,
               expiration: c.expiration,
               dte: c.dte,

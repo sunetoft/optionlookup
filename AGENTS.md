@@ -13,12 +13,14 @@ ROI per day on collateral, and filters strikes that meet the user's hard
 rules. Supports stock import from TradeScouter and Themeinvestor, plus bookmarking
 analyses.
 
-**CSP Scanner** (added Aug 2026): Multi-tenant scanner where users create
+**Wheel Scanner** (added Aug 2026): Multi-tenant scanner where users create
 ticker watchlists with USD price targets. A scheduled cron (2× daily during
-NYSE hours) scans option chains for CSP puts with ROI ≥ 0.1%/day, strike ≤
-user target, DTE ~28-62 (loose, ±2 from 30-60 sweet spot). Results replace on each scan. Discord
-notifications + email digests sent after each scan. Admin heatmap shows
-best CSP opportunities across all users.
+NYSE hours) scans option chains for BOTH the wheel's legs in one pass: CSP
+puts (ROI ≥ 0.1%/day, strike ≤ user target, DTE ~28-62 loose) and covered
+calls (ROI ≥ 0.1%/day on shares owned, OTM above current price, DTE ≤ 90).
+Results replace on each scan. Discord
+notifications + email digests sent after each scan (both legs). Admin heatmap shows
+best put + best call opportunities across all users.
 
 The user trades the wheel strategy via Saxo Bank (SaxoTraderGO) with strict
 rules: every trade must deliver ≥0.1% ROI per trading day on collateral,
@@ -65,10 +67,23 @@ PasswordReset, ScanCategory, ScanTicker, ScanResult, ScanRun
 ### CSP Scanner Models (Aug 2026)
 
 - **ScanTicker**: User watchlist entry (`userId`, `ticker`, `priceTarget`). Unique on `[userId, ticker]`.
-- **ScanResult**: Individual qualifying contract from a scan (`scanTickerId`, `scanRunId`, `strike`, `expiration`, `dte`, `bid`, `ask`, `roiPerDay`, `totalRoi`, `openInterest`, `volume`, `impliedVol`, `earningsWarning`, `emWarning`).
-- **ScanRun**: Metadata for a single scan execution (`scanTickerId`, `userId`, `ticker`, `scanType` = "scheduled" | "manual", `totalPuts`, `qualifiedPuts`, `currentPrice`, `earningsDate`).
+- **ScanResult**: Individual qualifying contract from a scan (`scanTickerId`, `scanRunId`, `optionType` = "PUT" | "CALL", `strike`, `expiration`, `dte`, `bid`, `ask`, `roiPerDay`, `totalRoi`, `openInterest`, `volume`, `impliedVol`, `earningsWarning`, `emWarning`). `optionType` distinguishes CSP puts from covered calls.
+- **ScanRun**: Metadata for a single scan execution (`scanTickerId`, `userId`, `ticker`, `scanType` = "scheduled" | "manual", `totalPuts`, `qualifiedPuts`, `totalCalls`, `qualifiedCalls`, `currentPrice`, `earningsDate`).
 
-Old results are deleted and replaced on each scan (Option A replacement).
+Old results are deleted and replaced on each scan (Option A replacement). Each scan covers BOTH the wheel's legs in one pass (Yahoo returns puts+calls in one call per expiration → no extra API calls).
+
+### Wheel Strategy (Aug 2026 — extended from CSP-only)
+
+The scanner now finds both legs of the wheel:
+
+- **CSP Puts** (`optionType="PUT"`): strike ≤ user price target, ROI = `bid/strike/dte`, DTE ~30-60 (loose, 28-62), not below 50% of current price. Collateral = strike.
+- **Covered Calls** (`optionType="CALL"`): OTM calls **above** current price, ROI = `bid/currentPrice/dte` (collateral = shares owned), **DTE ≤ 90** (hard max, floor 7 to avoid 0-DTE noise), up to 150% of current price.
+
+Shared warnings for both legs:
+- **Earnings warning** (hard requirement): flags any contract whose DTE extends **past the next earnings date** — i.e. expiration > next earnings date. Shown prominently in the UI (red banner + per-row red flag + row highlight), in Discord/email.
+- **EM warning**: puts flagged when strike is inside the expected move (`strike > EM lower bound`); calls flagged when strike is below the EM upper bound (`strike < EM upper bound`) — likely to be breached.
+
+UI shows a segmented **CSP Puts / Covered Calls** toggle per ticker with separate counts, sparkline history per leg, and a combined summary badge. Notifications + email digests + heatmap all surface both legs.
 
 ## Build & Deploy
 
@@ -147,16 +162,15 @@ The dashboard renders a vertical stack of analysis cards when a ticker is looked
 5. **PriceChart** — 6-month price history with EMA21 overlay and EM bands
 6. **OptionsTable** — Scans all option chains for qualifying puts
 
-## CSP Scanner Section (Aug 2026)
+## Wheel Scanner Section (Aug 2026 — extended from CSP-only)
 
 ### Overview
 
 Multi-tenant scanner at `/scanner`. Users add tickers with USD price targets.
-Scanner runs 2× daily during NYSE hours and finds CSP puts matching:
-- ROI ≥ 0.1% per trading day
-- Strike ≤ user's price target
-- DTE ~28-62 (loose — 30-60 sweet spot, ±2 tolerance, contracts outside sweet spot shown with badge)
-- EM as warning indicator (not a hard filter)
+Scanner runs 2× daily during NYSE hours and finds BOTH the wheel's legs:
+- **CSP puts**: ROI ≥ 0.1% per trading day, strike ≤ user's price target, DTE ~28-62 (loose — 30-60 sweet spot, ±2 tolerance, contracts outside sweet spot shown with badge)
+- **Covered calls**: OTM calls above current price, ROI ≥ 0.1%/day on shares owned, DTE ≤ 90 (floor 7)
+- EM as warning indicator (not a hard filter) — puts above EM lower bound, calls below EM upper bound
 - Earnings warning if contract expires after next earnings date
 
 ### Scanner API Endpoints

@@ -28,7 +28,7 @@ export async function GET() {
       user: { select: { email: true } },
       scanResults: {
         orderBy: { roiPerDay: 'desc' },
-        take: 5, // top 5 per ticker
+        take: 10, // top 10 per ticker (covers both legs)
       },
       scanRuns: {
         orderBy: { scannedAt: 'desc' },
@@ -37,12 +37,16 @@ export async function GET() {
     },
   });
 
-  // Aggregate: per-ticker best contracts + user count
+  // Aggregate: per-ticker best put + best call + user count
   const tickerMap = new Map<string, {
     ticker: string;
     userCount: number;
     bestRoi: number;
     bestContract: any | null;
+    bestPut: any | null;
+    bestCall: any | null;
+    putCount: number;
+    callCount: number;
     topContracts: any[];
     currentPrice: number | null;
     earningsDate: string | null;
@@ -55,6 +59,10 @@ export async function GET() {
       userCount: 0,
       bestRoi: 0,
       bestContract: null,
+      bestPut: null,
+      bestCall: null,
+      putCount: 0,
+      callCount: 0,
       topContracts: [],
       currentPrice: null,
       earningsDate: null,
@@ -62,10 +70,22 @@ export async function GET() {
     };
     existing.userCount++;
     if (st.scanResults.length > 0) {
-      const best = st.scanResults[0];
-      if (best.roiPerDay > existing.bestRoi) {
-        existing.bestRoi = best.roiPerDay;
-        existing.bestContract = best;
+      const puts = st.scanResults.filter((r) => !r.optionType || r.optionType === 'PUT');
+      const calls = st.scanResults.filter((r) => r.optionType === 'CALL');
+      existing.putCount += puts.length;
+      existing.callCount += calls.length;
+
+      if (puts.length > 0 && (!existing.bestPut || puts[0].roiPerDay > existing.bestPut.roiPerDay)) {
+        existing.bestPut = puts[0];
+      }
+      if (calls.length > 0 && (!existing.bestCall || calls[0].roiPerDay > existing.bestCall.roiPerDay)) {
+        existing.bestCall = calls[0];
+      }
+
+      const overallBest = st.scanResults[0];
+      if (overallBest.roiPerDay > existing.bestRoi) {
+        existing.bestRoi = overallBest.roiPerDay;
+        existing.bestContract = overallBest;
       }
       if (existing.topContracts.length === 0) {
         existing.topContracts = st.scanResults;
@@ -87,6 +107,8 @@ export async function GET() {
   });
   const totalTickers = heatmap.length;
   const tickersWithContracts = heatmap.filter(h => h.bestRoi > 0).length;
+  const totalPuts = heatmap.reduce((s, h) => s + h.putCount, 0);
+  const totalCalls = heatmap.reduce((s, h) => s + h.callCount, 0);
 
   return NextResponse.json({
     heatmap,
@@ -95,6 +117,8 @@ export async function GET() {
       totalTickers,
       tickersWithContracts,
       totalScanTickers: allTickers.length,
+      totalPuts,
+      totalCalls,
     },
   });
 }

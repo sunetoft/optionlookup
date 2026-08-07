@@ -9,6 +9,7 @@ import {
 
 interface ScanResult {
   id: string;
+  optionType?: string;
   strike: number;
   expiration: string;
   dte: number;
@@ -28,6 +29,7 @@ interface ScanRun {
   id: string;
   scanType: string;
   qualifiedPuts: number;
+  qualifiedCalls: number;
   currentPrice: number | null;
   earningsDate: string | null;
   scannedAt: string;
@@ -63,6 +65,8 @@ interface TickerRowProps {
   onCategoryChange?: (categoryId: string | null) => void;
 }
 
+type StrategyTab = 'PUT' | 'CALL';
+
 export function TickerRow({
   ticker: t,
   isScanning,
@@ -75,8 +79,19 @@ export function TickerRow({
 }: TickerRowProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [tab, setTab] = useState<StrategyTab>('PUT');
 
-  const contracts = t.latestResults || [];
+  // Preserve original order from the API (already sorted: puts first if returned that way),
+  // but split by optionType. Fall back to treating everything as a put for legacy rows.
+  const all = t.latestResults || [];
+  const putContracts = all.filter((c) => !c.optionType || c.optionType === 'PUT');
+  const callContracts = all.filter((c) => c.optionType === 'CALL');
+  const contracts = tab === 'PUT' ? putContracts : callContracts;
+  const contractCount = contracts.length;
+
+  // Any earnings-crossing contract across BOTH strategies (for the summary badge)
+  const earningsRiskAny = all.some((c) => c.earningsWarning);
+
   const latestRun = t.scanRuns[0];
   const currentPrice = latestRun?.currentPrice ?? null;
   const earningsDate = latestRun?.earningsDate ?? null;
@@ -91,7 +106,6 @@ export function TickerRow({
       })
     : null;
 
-  const contractCount = contracts.length;
   const bestRoi = contracts.length > 0 ? contracts[0].roiPerDay : null;
 
   return (
@@ -136,14 +150,25 @@ export function TickerRow({
           </div>
         )}
 
-        {/* Contract count */}
-        <div className="flex items-center gap-1.5 ml-auto">
-          {contractCount > 0 ? (
-            <span className="flex items-center gap-1 text-sm px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
-              <TrendingUp className="h-3.5 w-3.5" />
-              {contractCount} contract{contractCount !== 1 ? 's' : ''}
-              {bestRoi && <span className="text-xs ml-1 opacity-70">({bestRoi.toFixed(2)}%/d)</span>}
-            </span>
+        {/* Contract counts (both strategies) */}
+        <div className="flex items-center gap-1.5 ml-auto flex-wrap">
+          {all.length > 0 ? (
+            <>
+              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                <TrendingDown className="h-3 w-3" />
+                {putContracts.length}CSP
+              </span>
+              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20">
+                <TrendingUp className="h-3 w-3" />
+                {callContracts.length}CC
+              </span>
+              {earningsRiskAny && (
+                <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30">
+                  <AlertTriangle className="h-3 w-3" />
+                  Earnings
+                </span>
+              )}
+            </>
           ) : (
             <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-500">
               No contracts
@@ -191,7 +216,6 @@ export function TickerRow({
               </button>
               {showCategoryPicker && (
                 <>
-                  {/* Click-outside overlay */}
                   <div
                     className="fixed inset-0 z-40"
                     onClick={() => setShowCategoryPicker(false)}
@@ -273,21 +297,64 @@ export function TickerRow({
       {/* Expanded Contracts */}
       {isExpanded && (
         <div className="border-t border-slate-800 px-4 py-3">
-          {/* Earnings warning */}
+          {/* Earnings warning — hard requirement: warn when a suggested contract's DTE
+              extends past the next earnings report date */}
           {earningsDate && (
-            <div className="mb-3 flex items-center gap-2 text-xs text-amber-400/80">
-              <AlertTriangle className="h-3.5 w-3.5" />
-              Next earnings: {earningsDate}
+            <div className={`mb-3 flex items-center gap-2 text-xs rounded-lg px-3 py-2 ${
+              earningsRiskAny
+                ? 'bg-red-500/10 text-red-300 border border-red-500/30'
+                : 'bg-slate-800/50 text-amber-400/80 border border-slate-700'
+            }`}>
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              <span>
+                Next earnings: <strong>{earningsDate}</strong>
+                {earningsRiskAny
+                  ? ' — ⚠️ Some contracts below expire AFTER earnings. DTE extends past the report date; exercise timing risk on those.'
+                  : ''}
+              </span>
             </div>
           )}
 
+          {/* Strategy Tabs */}
+          <div className="flex items-center gap-1 mb-3">
+            <button
+              onClick={() => setTab('PUT')}
+              className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+                tab === 'PUT'
+                  ? 'bg-sky-500/15 text-sky-300 border border-sky-500/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-transparent'
+              }`}
+            >
+              CSP Puts
+              <span className="ml-1.5 text-xs opacity-70">({putContracts.length})</span>
+            </button>
+            <button
+              onClick={() => setTab('CALL')}
+              className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
+                tab === 'CALL'
+                  ? 'bg-violet-500/15 text-violet-300 border border-violet-500/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-transparent'
+              }`}
+            >
+              Covered Calls
+              <span className="ml-1.5 text-xs opacity-70">({callContracts.length})</span>
+            </button>
+          </div>
+
           {contracts.length === 0 ? (
             <div className="py-6 text-center text-sm text-slate-500">
-              No qualifying contracts found.
-              {currentPrice && t.priceTarget >= currentPrice && (
+              {tab === 'PUT'
+                ? 'No qualifying CSP put contracts found.'
+                : 'No qualifying covered call contracts found.'}
+              {tab === 'PUT' && currentPrice && t.priceTarget >= currentPrice && (
                 <span className="block mt-1 text-amber-500/60">
-                  ⚠️ Your target ($${t.priceTarget.toFixed(2)}) is at or above current price ($${currentPrice.toFixed(2)}).
+                  ⚠️ Your target (${t.priceTarget.toFixed(2)}) is at or above current price (${currentPrice.toFixed(2)}).
                   CSP puts are below the current price.
+                </span>
+              )}
+              {tab === 'CALL' && currentPrice && (
+                <span className="block mt-1 text-amber-500/60">
+                  Covered calls are OTM calls above the current price (${currentPrice.toFixed(2)}), DTE ≤ 90.
                 </span>
               )}
             </div>
@@ -313,7 +380,9 @@ export function TickerRow({
                     {contracts.map((c, i) => (
                       <tr
                         key={c.id || i}
-                        className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors"
+                        className={`border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors ${
+                          c.earningsWarning ? 'bg-red-500/[0.04]' : ''
+                        }`}
                       >
                         <td className="py-2 px-2">
                           <span className="font-semibold text-slate-100">${c.strike}</span>
@@ -342,7 +411,7 @@ export function TickerRow({
                         <td className="py-2 px-2 text-center">
                           <div className="flex items-center justify-center gap-1">
                             {c.earningsWarning && (
-                              <span title="Expires after earnings date" className="text-red-400">
+                              <span title="DTE extends past next earnings date" className="text-red-400">
                                 <AlertTriangle className="h-3.5 w-3.5" />
                               </span>
                             )}
@@ -365,9 +434,9 @@ export function TickerRow({
               </div>
 
               {/* Legend */}
-              <div className="mt-2 flex items-center gap-4 text-xs text-slate-600">
+              <div className="mt-2 flex items-center gap-4 text-xs text-slate-600 flex-wrap">
                 <span className="flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3 text-red-400" /> Expires after earnings
+                  <AlertTriangle className="h-3 w-3 text-red-400" /> DTE past earnings
                 </span>
                 <span className="flex items-center gap-1">
                   <ShieldAlert className="h-3 w-3 text-amber-400" /> Inside Expected Move
@@ -380,7 +449,7 @@ export function TickerRow({
               {/* ROI History Sparkline */}
               {t.scanRuns.length > 1 && (
                 <div className="mt-4 pt-3 border-t border-slate-800/50">
-                  <RoiHistoryChart scanRuns={t.scanRuns} />
+                  <RoiHistoryChart scanRuns={t.scanRuns} tab={tab} />
                 </div>
               )}
             </>
@@ -391,28 +460,34 @@ export function TickerRow({
   );
 }
 
-// ── Inline ROI History Sparkline ─────────────────────────────────────
+// ── Inline Chart ─────────────────────────────────────────────────────
 
-function RoiHistoryChart({ scanRuns }: { scanRuns: ScanRun[] }) {
+function RoiHistoryChart({ scanRuns, tab }: { scanRuns: ScanRun[]; tab: StrategyTab }) {
   const runs = [...scanRuns].reverse(); // chronological order
-  const maxRoi = Math.max(...runs.map((r) => r.qualifiedPuts), 1);
+  const values = runs.map((r) => (tab === 'PUT' ? r.qualifiedPuts : r.qualifiedCalls));
+  const maxCount = Math.max(...values, 1);
 
   return (
     <div className="flex items-center gap-3">
-      <span className="text-xs text-slate-600 whitespace-nowrap">ROI History:</span>
+      <span className="text-xs text-slate-600 whitespace-nowrap">
+        {tab === 'PUT' ? 'CSP Puts' : 'Covered Calls'} History:
+      </span>
       <div className="flex items-end gap-1 h-8">
         {runs.map((run, i) => {
-          const height = maxRoi > 0 ? (run.qualifiedPuts / maxRoi) * 100 : 0;
+          const count = tab === 'PUT' ? run.qualifiedPuts : run.qualifiedCalls;
+          const height = maxCount > 0 ? (count / maxCount) * 100 : 0;
           return (
             <div
               key={run.id || i}
               className="group relative"
-              title={`${new Date(run.scannedAt).toLocaleDateString()}: ${run.qualifiedPuts} contracts`}
+              title={`${new Date(run.scannedAt).toLocaleDateString()}: ${count} ${tab === 'PUT' ? 'puts' : 'calls'}`}
             >
               <div
                 className={`w-6 rounded-sm transition-all ${
-                  run.qualifiedPuts > 0
-                    ? 'bg-gradient-to-t from-amber-600 to-amber-400'
+                  count > 0
+                    ? tab === 'PUT'
+                      ? 'bg-gradient-to-t from-sky-600 to-sky-400'
+                      : 'bg-gradient-to-t from-violet-600 to-violet-400'
                     : 'bg-slate-800'
                 }`}
                 style={{ height: `${Math.max(height, 4)}%`, minHeight: '4px' }}

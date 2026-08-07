@@ -42,7 +42,7 @@ export interface AlpacaOptionContract {
   type: 'put' | 'call';
 }
 
-export async function fetchAlpacaExpirationDates(ticker: string): Promise<string[]> {
+export async function fetchAlpacaExpirationDates(ticker: string, type: 'put' | 'call' = 'put'): Promise<string[]> {
   const headers = getHeaders();
   const today = new Date().toISOString().split('T')[0];
   const future = new Date();
@@ -55,7 +55,7 @@ export async function fetchAlpacaExpirationDates(ticker: string): Promise<string
   for (let page = 0; page < 10; page++) {
     const params = new URLSearchParams({
       underlying_symbols: ticker,
-      type: 'put',
+      type,
       expiration_date_gte: today,
       expiration_date_lte: futureStr,
       status: 'active',
@@ -84,9 +84,10 @@ export async function fetchAlpacaExpirationDates(ticker: string): Promise<string
   return Array.from(expirations).sort();
 }
 
-export async function fetchAlpacaPutOptions(
+export async function fetchAlpacaOptions(
   ticker: string,
   opts: {
+    type?: 'put' | 'call';
     expirationDateGte?: string;
     expirationDateLte?: string;
     strikePriceGte?: number;
@@ -98,11 +99,12 @@ export async function fetchAlpacaPutOptions(
   const allContracts: AlpacaOptionContract[] = [];
   let pageToken: string | null = null;
   const maxPages = 10;
+  const type = opts.type ?? 'put';
 
   for (let page = 0; page < maxPages; page++) {
     const params = new URLSearchParams({
       feed: 'indicative',
-      type: 'put',
+      type,
       limit: String(opts.limit ?? 100),
     });
     if (opts.expirationDateGte) params.set('expiration_date_gte', opts.expirationDateGte);
@@ -123,7 +125,7 @@ export async function fetchAlpacaPutOptions(
 
     for (const [sym, snapshot] of Object.entries(snapshots)) {
       const parsed = parseOptionSymbol(sym);
-      if (!parsed || parsed.type !== 'put') continue;
+      if (!parsed || parsed.type !== type) continue;
 
       const snap = snapshot as any;
       const quote = snap?.latestQuote ?? {};
@@ -140,7 +142,7 @@ export async function fetchAlpacaPutOptions(
         volume: trade?.s ?? 0,
         openInterest: snap?.openInterest ?? 0,
         impliedVolatility: greeks?.impliedVolatility ?? 0,
-        type: 'put',
+        type,
       });
     }
 
@@ -149,6 +151,32 @@ export async function fetchAlpacaPutOptions(
   }
 
   return allContracts;
+}
+
+export async function fetchAlpacaPutOptions(
+  ticker: string,
+  opts: {
+    expirationDateGte?: string;
+    expirationDateLte?: string;
+    strikePriceGte?: number;
+    strikePriceLte?: number;
+    limit?: number;
+  } = {}
+): Promise<AlpacaOptionContract[]> {
+  return fetchAlpacaOptions(ticker, { ...opts, type: 'put' });
+}
+
+export async function fetchAlpacaCallOptions(
+  ticker: string,
+  opts: {
+    expirationDateGte?: string;
+    expirationDateLte?: string;
+    strikePriceGte?: number;
+    strikePriceLte?: number;
+    limit?: number;
+  } = {}
+): Promise<AlpacaOptionContract[]> {
+  return fetchAlpacaOptions(ticker, { ...opts, type: 'call' });
 }
 
 export async function fetchAlpacaATMStraddle(
