@@ -1,25 +1,13 @@
+import './fonts.css';
 import type { Metadata } from 'next';
-import { DM_Sans, Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
 import { Toaster } from 'sonner';
 import { Providers } from '@/components/providers';
 import { Footer } from '@/components/footer';
 import { Navbar } from '@/components/navbar';
 import './globals.css';
 
-const dmSans = DM_Sans({
-  subsets: ['latin'],
-  variable: '--font-sans',
-});
 
-const plusJakarta = Plus_Jakarta_Sans({
-  subsets: ['latin'],
-  variable: '--font-display',
-});
 
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  variable: '--font-mono',
-});
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://optionlookup.bunnystocks.com'),
@@ -55,7 +43,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${dmSans.variable} ${plusJakarta.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <body className="font-sans antialiased">
         <script
           type="application/ld+json"
