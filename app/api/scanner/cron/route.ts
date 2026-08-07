@@ -37,21 +37,27 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Group by ticker to avoid redundant API calls
-  const tickerMap = new Map<string, { priceTarget: number; users: { id: string; email: string; scanTickerId: string }[] }>();
+  // Group by (ticker, priceTarget) — each user's watchlist has its OWN unique
+  // price target, so we must NOT conflate users who watch the same ticker with
+  // different targets. Users sharing the same ticker AND same target still share
+  // one scan (dedup API calls), but different targets get separate scans so each
+  // user only receives contracts filtered by their own price target.
+  const tickerMap = new Map<string, { ticker: string; priceTarget: number; users: { id: string; email: string; scanTickerId: string }[] }>();
 
   for (const st of allScanTickers) {
-    if (!tickerMap.has(st.ticker)) {
-      tickerMap.set(st.ticker, { priceTarget: st.priceTarget, users: [] });
+    const upper = st.ticker.toUpperCase().trim();
+    const key = `${upper}__${st.priceTarget}`;
+    if (!tickerMap.has(key)) {
+      tickerMap.set(key, { ticker: upper, priceTarget: st.priceTarget, users: [] });
     }
-    tickerMap.get(st.ticker)!.users.push({
+    tickerMap.get(key)!.users.push({
       id: st.userId,
       email: st.user.email,
       scanTickerId: st.id,
     });
   }
 
-  console.log(`[SCANNER/CRON] ${allScanTickers.length} scan tickers across ${tickerMap.size} unique tickers`);
+  console.log(`[SCANNER/CRON] ${allScanTickers.length} scan tickers across ${tickerMap.size} unique (ticker, priceTarget) groups`);
 
   // Scan tickers in parallel batches to avoid timeout (5 at a time)
   const BATCH_SIZE = 5;
@@ -63,9 +69,9 @@ export async function POST(req: NextRequest) {
 
     // Scan this batch in parallel
     const batchResults = await Promise.allSettled(
-      batch.map(async ([ticker, info]) => {
-        const result = await scanTicker(ticker, info.priceTarget);
-        return { ticker, info, result };
+      batch.map(async ([_key, info]) => {
+        const result = await scanTicker(info.ticker, info.priceTarget);
+        return { info, result };
       }),
     );
 
@@ -77,7 +83,8 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      const { ticker, info, result } = settled.value;
+      const { info, result } = settled.value;
+      const { ticker } = info;
       totalTickers++;
 
       if (result.error) {
