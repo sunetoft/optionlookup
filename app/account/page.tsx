@@ -83,20 +83,6 @@ export default function AccountPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-amber-900/30">
-      <nav className="border-b border-slate-800 px-6 py-4">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <span className="text-amber-500 text-2xl">🔍</span>
-            <span className="text-xl font-bold text-slate-100 font-display">OptionLookup</span>
-          </Link>
-          <div className="flex items-center gap-4">
-            <Link href="/dashboard" className="text-slate-400 hover:text-amber-500 text-sm">Dashboard</Link>
-            <Link href="/scanner" className="text-slate-400 hover:text-amber-500 text-sm">Scanner</Link>
-            <Link href="/pricing" className="text-slate-400 hover:text-amber-500 text-sm">Pricing</Link>
-          </div>
-        </div>
-      </nav>
-
       <div className="max-w-4xl mx-auto px-6 py-12">
         {successMsg && (
           <div className="mb-6 bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 text-amber-200">

@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { TIERS } from '@/lib/subscription';
 
 export const metadata = {
@@ -12,18 +11,6 @@ export default function PricingPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-amber-900/30">
-      <nav className="border-b border-slate-800 px-6 py-4">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <span className="text-amber-500 text-2xl">🔍</span>
-            <span className="text-xl font-bold text-slate-100 font-display">OptionLookup</span>
-          </Link>
-          <Link href="/dashboard" className="text-slate-400 hover:text-amber-500 transition text-sm">
-            Back to Dashboard →
-          </Link>
-        </div>
-      </nav>
-
       <div className="max-w-6xl mx-auto px-6 py-16">
         <div className="text-center mb-12">
           <h1 className="text-4xl md:text-5xl font-bold text-slate-100 mb-4 font-display">

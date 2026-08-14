@@ -607,12 +607,3 @@ async function scanViaAlpaca(
     stats: { datesScanned, totalPutsChecked, totalCallsChecked, rejections },
   };
 }
-
-// Backwards-compat alias (CSP-only scanning) — returns the same unified result;
-// callers that only care about puts can read `result.putContracts`.
-export async function scanTickerForCSP(
-  ticker: string,
-  priceTarget: number,
-): Promise<ScannerResult> {
-  return scanTicker(ticker, priceTarget);
-}

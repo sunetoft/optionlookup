@@ -28,7 +28,7 @@ export function Navbar() {
 
   const navLinks = [
     { href: '/dashboard', label: 'Analyze', icon: Search },
-    { href: '/scanner', label: 'CSP Scanner', icon: Crosshair },
+    { href: '/scanner', label: 'Wheel Scanner', icon: Crosshair },
     { href: '/pricing', label: 'Pricing', icon: DollarSign },
   ];
 

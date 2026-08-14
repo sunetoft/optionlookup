@@ -70,7 +70,7 @@ export async function GET() {
     };
     existing.userCount++;
     if (st.scanResults.length > 0) {
-      const puts = st.scanResults.filter((r) => !r.optionType || r.optionType === 'PUT');
+      const puts = st.scanResults.filter((r) => r.optionType === 'PUT');
       const calls = st.scanResults.filter((r) => r.optionType === 'CALL');
       existing.putCount += puts.length;
       existing.callCount += calls.length;
