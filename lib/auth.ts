@@ -4,6 +4,7 @@ import GoogleProvider from 'next-auth/providers/google';
 import { PrismaAdapter } from '@auth/prisma-adapter';
 import { prisma } from '@/lib/db';
 import bcrypt from 'bcryptjs';
+import { BunnyStocksSsoProvider } from '@/lib/sso-provider';
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -28,6 +29,12 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
       },
+    }),
+    BunnyStocksSsoProvider({
+      issuer: process.env.SSO_PROVIDER_URL || 'https://dashboard.bunnystocks.com',
+      clientId: process.env.SSO_CLIENT_ID || 'optionlookup',
+      clientSecret: (process.env.SSO_CLIENT_SECRET || process.env.CROSS_SITE_API_KEY || '') as string,
+      name: 'BunnyStocks SSO',
     }),
     ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
       ? [GoogleProvider({

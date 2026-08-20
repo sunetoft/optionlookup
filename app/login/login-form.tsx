@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Search, Loader2, ArrowLeft } from 'lucide-react';
+import { Search, Loader2, ArrowLeft, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -136,6 +136,16 @@ export function LoginForm() {
             </div>
 
             <GoogleSignInButton />
+
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full mt-2"
+              onClick={() => signIn('bunnystocks-sso', { callbackUrl: '/dashboard' })}
+            >
+              <ShieldCheck className="h-4 w-4 mr-2" />
+              Sign in with BunnyStocks
+            </Button>
 
             <p className="text-center text-sm text-muted-foreground">
               Don&apos;t have an account?{' '}
