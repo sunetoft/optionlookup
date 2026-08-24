@@ -26,8 +26,14 @@ export async function sendScannerDiscordNotification(
   const scanLabel = now.getHours() < 14 ? '🌅 Morning Scan' : '🌆 Afternoon Scan';
   const dateStr = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
-  // Build embed fields — up to 25 fields per embed (Discord limit)
-  const fields: { name: string; value: string; inline?: boolean }[] = [];
+  // Discord limits: ≤10 embeds per message, ≤25 fields per embed, ≤6000 chars per embed.
+  const MAX_FIELDS_PER_EMBED = 25;
+  const MAX_EMBEDS_PER_MESSAGE = 10;
+  // Reserve headroom for title/description/footer so a chunk never blows the 6000 cap.
+  const EMBED_CHAR_BUDGET = 5400;
+
+  // Build one field per ticker (bounded to 4 puts + 4 calls each).
+  const fields: { name: string; value: string }[] = [];
 
   for (const { ticker, result } of results) {
     if (result.contracts.length === 0) continue;
@@ -78,8 +84,6 @@ export async function sendScannerDiscordNotification(
       name: `**${ticker}** — ${result.putContracts.length}CSP + ${result.callContracts.length}CC${bestBits.length ? ` | Best: ${bestBits.join(', ')}` : ''}`,
       value,
     });
-
-    if (fields.length >= 25) break; // Discord embed limit
   }
 
   if (fields.length === 0) {
@@ -87,34 +91,57 @@ export async function sendScannerDiscordNotification(
     return;
   }
 
-  const payload = {
-    embeds: [{
-      title: `${scanLabel} — ${dateStr}`,
-      description: `**${results.filter(r => r.result.contracts.length > 0).length} tickers** with qualifying wheel contracts found`,
-      color: 0xf59e0b,
-      fields,
-      footer: { text: 'OptionLookup Wheel Scanner' },
-      timestamp: now.toISOString(),
-    }],
-  };
+  const totalTickers = fields.length;
 
-  try {
-    const res = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) {
-      console.error(`[SCANNER/DISCORD] Webhook failed: ${res.status} ${res.statusText}`);
-      const body = await res.text();
-      console.error(`[SCANNER/DISCORD] Response: ${body.slice(0, 200)}`);
-    } else {
-      console.log(`[SCANNER/DISCORD] Notification sent: ${fields.length} tickers`);
+  // Chunk fields into embeds that respect Discord's 6000-char + 25-field limits.
+  const chunks: { name: string; value: string }[][] = [];
+  let current: { name: string; value: string }[] = [];
+  let currentChars = 0;
+  for (const f of fields) {
+    const size = f.name.length + f.value.length;
+    if (current.length > 0 && (current.length >= MAX_FIELDS_PER_EMBED || currentChars + size > EMBED_CHAR_BUDGET)) {
+      chunks.push(current);
+      current = [];
+      currentChars = 0;
     }
-  } catch (err: any) {
-    console.error(`[SCANNER/DISCORD] Webhook error: ${err?.message}`);
+    current.push(f);
+    currentChars += size;
   }
+  if (current.length > 0) chunks.push(current);
+
+  const embeds = chunks.map((chunk, i) => ({
+    title: i === 0 ? `${scanLabel} — ${dateStr}` : `${scanLabel} — ${dateStr} (${i + 1}/${chunks.length})`,
+    description: i === 0 ? `**${totalTickers} tickers** with qualifying wheel contracts found` : undefined,
+    color: 0xf59e0b,
+    fields: chunk,
+    footer: i === chunks.length - 1 ? { text: 'OptionLookup Wheel Scanner' } : undefined,
+    timestamp: i === 0 ? now.toISOString() : undefined,
+  }));
+
+  // Send in batches of ≤10 embeds per message.
+  let messagesSent = 0;
+  for (let i = 0; i < embeds.length; i += MAX_EMBEDS_PER_MESSAGE) {
+    const batch = embeds.slice(i, i + MAX_EMBEDS_PER_MESSAGE);
+    try {
+      const res = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ embeds: batch }),
+      });
+
+      if (!res.ok) {
+        console.error(`[SCANNER/DISCORD] Webhook failed: ${res.status} ${res.statusText}`);
+        const body = await res.text();
+        console.error(`[SCANNER/DISCORD] Response: ${body.slice(0, 200)}`);
+      } else {
+        messagesSent++;
+      }
+    } catch (err: any) {
+      console.error(`[SCANNER/DISCORD] Webhook error: ${err?.message}`);
+    }
+  }
+
+  console.log(`[SCANNER/DISCORD] Notification sent: ${totalTickers} tickers across ${embeds.length} embeds / ${messagesSent} message(s)`);
 }
 
 // ── Email digest ─────────────────────────────────────────────────────
