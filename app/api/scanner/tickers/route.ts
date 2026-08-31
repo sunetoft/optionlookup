@@ -155,8 +155,9 @@ export async function DELETE(req: NextRequest) {
 
 /**
  * PATCH /api/scanner/tickers
- * Body: { ticker: string, categoryId: string | null }
- * Updates a ticker's category assignment.
+ * Body: { ticker: string, categoryId?: string | null, priceTarget?: number }
+ * Updates a ticker's category assignment and/or price target.
+ * At least one of categoryId or priceTarget must be provided.
  */
 export async function PATCH(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -167,34 +168,53 @@ export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json();
     const ticker = (body?.ticker ?? '').toUpperCase().trim();
-    const categoryId = body?.categoryId ?? null;
 
     if (!ticker) {
       return NextResponse.json({ error: 'Ticker is required' }, { status: 400 });
     }
 
-    // If setting a category, verify ownership
-    if (categoryId) {
-      const category = await prisma.scanCategory.findFirst({
-        where: { id: categoryId, userId: session.user.id },
-      });
-      if (!category) {
-        return NextResponse.json({ error: 'Category not found' }, { status: 404 });
+    const data: { categoryId?: string | null; priceTarget?: number } = {};
+
+    // Category assignment (only when the field is present)
+    if (body?.categoryId !== undefined) {
+      const categoryId = body.categoryId ?? null;
+      // If setting a category, verify ownership
+      if (categoryId) {
+        const category = await prisma.scanCategory.findFirst({
+          where: { id: categoryId, userId: session.user.id },
+        });
+        if (!category) {
+          return NextResponse.json({ error: 'Category not found' }, { status: 404 });
+        }
       }
+      data.categoryId = categoryId || null;
+    }
+
+    // Price target edit (only when the field is present)
+    if (body?.priceTarget !== undefined) {
+      const priceTarget = parseFloat(body.priceTarget);
+      if (!priceTarget || priceTarget <= 0) {
+        return NextResponse.json({ error: 'Valid price target is required' }, { status: 400 });
+      }
+      data.priceTarget = priceTarget;
+    }
+
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
     }
 
     const updated = await prisma.scanTicker.updateMany({
       where: { userId: session.user.id, ticker },
-      data: { categoryId: categoryId || null },
+      data,
     });
 
     if (updated.count === 0) {
       return NextResponse.json({ error: 'Ticker not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ message: 'Category updated', ticker, categoryId });
+    return NextResponse.json({ message: 'Ticker updated', ticker, ...data });
   } catch (error: any) {
     console.error('[SCANNER/TICKERS] PATCH error:', error);
-    return NextResponse.json({ error: 'Failed to update category' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to update ticker' }, { status: 500 });
   }
 }

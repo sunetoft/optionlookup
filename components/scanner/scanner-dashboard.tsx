@@ -190,6 +190,29 @@ export function ScannerDashboard() {
     }
   };
 
+  const handleEdit = async (ticker: string, priceTarget: number) => {
+    try {
+      const res = await fetch('/api/scanner/tickers', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker, priceTarget }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        toast.error(data.error || 'Failed to update price target');
+        return;
+      }
+
+      setTickers((prev) =>
+        prev.map((t) => (t.ticker === ticker ? { ...t, priceTarget } : t)),
+      );
+      toast.success(`${ticker} price target updated to $${priceTarget.toFixed(2)}`);
+    } catch {
+      toast.error('Failed to update price target');
+    }
+  };
+
   const handleAdd = async (ticker: string, priceTarget: number) => {
     try {
       const res = await fetch('/api/scanner/tickers', {
@@ -318,6 +341,7 @@ export function ScannerDashboard() {
       }
       onScan={() => handleScan(t.ticker)}
       onDelete={() => handleDelete(t.ticker)}
+      onEdit={handleEdit}
       categories={categories}
       onCategoryChange={(categoryId) => handleTickerCategoryChange(t.ticker, categoryId)}
     />

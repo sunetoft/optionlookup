@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import { toast } from 'sonner';
 import {
   ChevronDown, ChevronRight, RefreshCw, Trash2, Loader2,
   TrendingUp, TrendingDown, AlertTriangle, ShieldAlert,
-  Clock, Target, FolderOpen,
+  Clock, Target, FolderOpen, Pencil, Check, X,
 } from 'lucide-react';
 
 interface ScanResult {
@@ -61,6 +62,7 @@ interface TickerRowProps {
   onToggleExpand: () => void;
   onScan: () => void;
   onDelete: () => void;
+  onEdit?: (ticker: string, priceTarget: number) => Promise<void>;
   categories?: CategoryOption[];
   onCategoryChange?: (categoryId: string | null) => void;
 }
@@ -74,12 +76,40 @@ export function TickerRow({
   onToggleExpand,
   onScan,
   onDelete,
+  onEdit,
   categories = [],
   onCategoryChange,
 }: TickerRowProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [tab, setTab] = useState<StrategyTab>('PUT');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTarget, setEditTarget] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const startEdit = () => {
+    setEditTarget(String(t.priceTarget));
+    setIsEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setIsEditing(false);
+    setEditTarget('');
+  };
+
+  const saveEdit = async () => {
+    const target = parseFloat(editTarget);
+    if (!target || target <= 0) {
+      toast.error('Enter a valid price target');
+      return;
+    }
+    if (!onEdit) return;
+    setSaving(true);
+    await onEdit(t.ticker, target);
+    setSaving(false);
+    setIsEditing(false);
+    setEditTarget('');
+  };
 
   // Preserve original order from the API (already sorted: puts first if returned that way),
   // but split by optionType. Fall back to treating everything as a put for legacy rows.
@@ -273,6 +303,20 @@ export function TickerRow({
               <RefreshCw className="h-4 w-4" />
             )}
           </button>
+          {onEdit && (
+            <button
+              onClick={startEdit}
+              disabled={isEditing}
+              className={`p-1.5 rounded-lg transition-colors disabled:opacity-50 ${
+                isEditing
+                  ? 'bg-amber-500/20 text-amber-400'
+                  : 'hover:bg-slate-800 text-slate-400 hover:text-amber-400'
+              }`}
+              title="Edit price target"
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+          )}
           <button
             onClick={() => {
               if (confirmDelete) {
@@ -293,6 +337,50 @@ export function TickerRow({
           </button>
         </div>
       </div>
+
+      {/* Inline Price Target Editor */}
+      {isEditing && (
+        <div className="border-t border-amber-500/20 bg-slate-900/70 px-4 py-3 flex items-center gap-3">
+          <Target className="h-4 w-4 text-amber-500 flex-shrink-0" />
+          <span className="text-xs text-slate-400 font-semibold whitespace-nowrap">Price Target (USD)</span>
+          <div className="relative flex-1 max-w-[200px]">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">$</div>
+            <input
+              type="number"
+              value={editTarget}
+              onChange={(e) => setEditTarget(e.target.value)}
+              step="0.01"
+              min="0"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  saveEdit();
+                } else if (e.key === 'Escape') {
+                  cancelEdit();
+                }
+              }}
+              className="w-full pl-7 pr-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 transition-colors"
+            />
+          </div>
+          <button
+            onClick={saveEdit}
+            disabled={saving}
+            className="flex items-center gap-1 px-3 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            Save
+          </button>
+          <button
+            onClick={cancelEdit}
+            disabled={saving}
+            className="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors disabled:opacity-50"
+            title="Cancel"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* Expanded Contracts */}
       {isExpanded && (
