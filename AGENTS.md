@@ -142,6 +142,8 @@ components/
     ticker-row.tsx          Expandable row: contracts table + ROI sparkline
     heatmap-dashboard.tsx   Admin market heatmap (all users' best contracts)
   dashboard/            Analysis widgets (fundamentals, warnings, insights, expected moves, chart, options)
+  pricing/
+    get-started-button.tsx   Client 'Get Started' button — POST /api/stripe/checkout (or /login fallback)
 lib/
   scanner-engine.ts     Reusable CSP scanning logic (Yahoo→Alpaca, price target filter, ROI/EM/earnings warnings)
   scanner-notifications.ts  Discord webhook + email digest
