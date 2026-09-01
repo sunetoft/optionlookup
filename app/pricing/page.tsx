@@ -1,4 +1,5 @@
 import { TIERS } from '@/lib/subscription';
+import GetStartedButton from '@/components/pricing/get-started-button';
 
 export const metadata = {
   title: 'Pricing — OptionLookup',
@@ -65,16 +66,10 @@ export default function PricingPage() {
                 </li>
               </ul>
 
-              <a
-                href="/login"
-                className={`block w-full text-center py-3 rounded-lg font-semibold transition ${
-                  featured?.id === tier.id
-                    ? 'bg-amber-500 text-slate-900 hover:bg-amber-400'
-                    : 'bg-slate-700 text-slate-100 hover:bg-slate-600'
-                }`}
-              >
-                Get Started
-              </a>
+              <GetStartedButton
+                tierId={tier.id}
+                featured={featured?.id === tier.id}
+              />
             </div>
           ))}
         </div>
