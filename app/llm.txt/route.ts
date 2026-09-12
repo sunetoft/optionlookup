@@ -25,16 +25,34 @@ export async function GET() {
 - [Scanner Heatmap](/api/scanner/heatmap) — GET; admin-only aggregate best contracts (auth required)
 - [Scanner Categories](/api/scanner/categories) — GET/POST; user ticker categories (auth required)
 
-### Core
+### Auth
+- [NextAuth](/api/auth/[...nextauth]) — NextAuth.js handler (Google OAuth + credentials)
+- [Sign Up](/api/signup) — register a new user account
+- [Forgot Password](/api/auth/forgot-password) — request password reset email
+- [Reset Password](/api/auth/reset-password) — reset password with token
+
+### Analysis & Core
+- [Stock Analyze](/api/stock/analyze) — on-demand wheel strategy analysis (auth required)
+- [Stock Options](/api/stock/options) — fetch option chain for a ticker (auth required)
 - [Bookmarks](/api/bookmarks) — manage bookmarked stocks (auth required)
 - [History](/api/history) — lookup history (auth required)
-- [Stripe Webhooks](/api/stripe) — Stripe webhook endpoint
+
+### Subscription
+- [Access](/api/subscription/access) — check subscription access (auth required)
+- [Status](/api/subscription/status) — get subscription status (auth required)
+- [Cancel](/api/subscription/cancel) — cancel subscription (auth required)
+
+### Stripe
+- [Checkout](/api/stripe/checkout) — create Stripe checkout session (auth required)
+- [Portal](/api/stripe/portal) — Stripe customer billing portal (auth required)
+- [Webhook](/api/stripe/webhook) — Stripe webhook endpoint (signature verified)
+
+### External & Cron
 - [External Import](/api/external/import-stock) — cross-site stock import (auth required)
+- [External User Exists](/api/external/user-exists) — check if a user account exists for an email
 - [Cron Renewal Reminders](/api/cron/renewal-reminders) — subscription renewal emails (cron key auth)
-- [Admin Users](/api/admin/users) — user management (admin)
-- [Admin Email](/api/admin/email-users) — bulk email (admin)
-- [TradeScouter Sync](/api/tradescouter) — cross-site stock sync
-- [ThemeInvestor Sync](/api/themeinvestor) — cross-site stock sync
+- [TradeScouter Sync](/api/tradescouter/status) — cross-site stock sync (status + stocks)
+- [ThemeInvestor Sync](/api/themeinvestor/status) — cross-site stock sync (status + stocks)
 
 ## Links
 - [GitHub](https://github.com/sunetoft/optionlookup)
