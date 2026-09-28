@@ -24,7 +24,7 @@ export function Navbar() {
   }, []);
   useEffect(() => setAccountOpen(false), [pathname]);
 
-  const isAdmin = session?.user?.role === 'ADMIN';
+  const isAdmin = session?.user?.role?.toLowerCase() === 'admin';
 
   const navLinks = [
     { href: '/dashboard', label: 'Analyze', icon: Search },
@@ -42,7 +42,7 @@ export function Navbar() {
       <div className="max-w-[1200px] mx-auto px-4 h-16 flex items-center justify-between">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg bg-amber-500 flex items-center justify-center">
+          <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
             <Search className="h-4 w-4 text-white" />
           </div>
           <span className="font-display text-lg font-bold tracking-tight hidden sm:block">
@@ -61,7 +61,7 @@ export function Navbar() {
                 href={link.href}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                   active
-                    ? 'bg-amber-500/10 text-amber-500'
+                    ? 'bg-primary/10 text-primary'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                 }`}
               >
@@ -99,7 +99,7 @@ export function Navbar() {
                     {isAdmin && (
                       <Link
                         href="/scanner/heatmap"
-                        className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-muted transition-colors text-amber-500"
+                        className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-muted transition-colors text-primary"
                       >
                         <Flame className="h-4 w-4" />
                         CSP Heatmap
@@ -122,7 +122,7 @@ export function Navbar() {
             <>
               <Link
                 href="/login?mode=signup"
-                className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-1.5 rounded-lg text-sm font-medium transition-colors"
               >
                 Sign Up
               </Link>

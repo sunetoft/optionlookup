@@ -7,6 +7,7 @@ export function Footer() {
     { label: 'HoldSell', href: 'https://holdsell.bunnystocks.com' },
     { label: 'TradeScouter', href: 'https://tradescouter.bunnystocks.com' },
     { label: 'GapTracker', href: 'https://gaptracker.bunnystocks.com' },
+    { label: 'Signals', href: 'https://signals.bunnystocks.com' },
   ];
 
   return (

@@ -76,7 +76,7 @@ export async function isAdminUser(userId: string): Promise<boolean> {
     where: { id: userId },
     select: { role: true },
   });
-  return user?.role === 'ADMIN';
+  return user?.role?.toLowerCase() === 'admin';
 }
 
 export async function hasActiveSubscription(userId: string): Promise<boolean> {

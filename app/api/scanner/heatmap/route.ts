@@ -6,6 +6,26 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { isAdminUser } from '@/lib/subscription';
 
+interface ScanResultContract {
+  id: string;
+  scanTickerId: string;
+  scanRunId: string;
+  optionType: string;
+  strike: number;
+  expiration: string;
+  dte: number;
+  bid: number;
+  ask: number;
+  roiPerDay: number;
+  totalRoi: number;
+  openInterest: number;
+  volume: number;
+  impliedVol: number;
+  earningsWarning: boolean;
+  emWarning: boolean;
+  scannedAt: Date;
+}
+
 /**
  * GET /api/scanner/heatmap
  * Admin-only — aggregates best CSP contracts across ALL users.
@@ -42,12 +62,12 @@ export async function GET() {
     ticker: string;
     userCount: number;
     bestRoi: number;
-    bestContract: any | null;
-    bestPut: any | null;
-    bestCall: any | null;
+    bestContract: ScanResultContract | null;
+    bestPut: ScanResultContract | null;
+    bestCall: ScanResultContract | null;
     putCount: number;
     callCount: number;
-    topContracts: any[];
+    topContracts: ScanResultContract[];
     currentPrice: number | null;
     earningsDate: string | null;
     lastScanned: string | null;
