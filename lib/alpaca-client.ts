@@ -1,9 +1,35 @@
 const ALPACA_DATA_URL = 'https://data.alpaca.markets';
 const ALPACA_TRADING_URL = 'https://paper-api.alpaca.markets';
 
+// ── credentials + the read-only guard ─────────────────────────────────
+// Alpaca has NO scoped or read-only API keys for key pairs: one pair = full trading
+// authority on its account. Only OAuth tokens carry scopes, and reading one needs an
+// app registration + refresh cycle — too much machinery for a data consumer. So the
+// containment is ours:
+//   1. prefer a dedicated ALPACA_DATA_KEY pair when configured (point it at a throwaway
+//      paper account, and a bug here can only damage that sandbox), and
+//   2. refuse any request that is not a GET against the market-data host — plus the ONE
+//      read-only trading endpoint this app needs, GET /v2/options/contracts (contract
+//      metadata: expirations, strikes). Nothing here can place, cancel or modify an order.
+const READ_ONLY_TRADING_PATHS = [/^\/v2\/options\/contracts$/];
+const ALPACA_TRADING_HOSTS = [/^(paper-)?api\.alpaca\.markets$/];
+
+export async function alpacaRead(url: string, init: RequestInit = {}): Promise<Response> {
+  const method = (init.method ?? 'GET').toUpperCase();
+  const u = new URL(url);
+  const isData = u.hostname === 'data.alpaca.markets';
+  const isReadOnlyTrading =
+    ALPACA_TRADING_HOSTS.some((re) => re.test(u.hostname)) &&
+    READ_ONLY_TRADING_PATHS.some((re) => re.test(u.pathname));
+  if (method !== 'GET' || !(isData || isReadOnlyTrading)) {
+    throw new Error(`blocked non-read-only Alpaca request: ${method} ${url}`);
+  }
+  return fetch(url, init);
+}
+
 function getHeaders(): Record<string, string> {
-  const key = process.env.ALPACA_API_KEY ?? '';
-  const secret = process.env.ALPACA_API_SECRET ?? '';
+  const key = (process.env.ALPACA_DATA_KEY || process.env.ALPACA_API_KEY) ?? '';
+  const secret = (process.env.ALPACA_DATA_SECRET || process.env.ALPACA_API_SECRET) ?? '';
   if (!key || !secret) {
     throw new Error('Alpaca API credentials not configured');
   }
@@ -64,7 +90,7 @@ export async function fetchAlpacaExpirationDates(ticker: string, type: 'put' | '
     if (pageToken) params.set('page_token', pageToken);
 
     const url = `${ALPACA_TRADING_URL}/v2/options/contracts?${params.toString()}`;
-    const res = await fetch(url, { headers });
+    const res = await alpacaRead(url, { headers });
     if (!res.ok) {
       console.error(`[ALPACA] Contracts fetch failed: ${res.status} ${res.statusText}`);
       break;
@@ -114,7 +140,7 @@ export async function fetchAlpacaOptions(
     if (pageToken) params.set('page_token', pageToken);
 
     const url = `${ALPACA_DATA_URL}/v1beta1/options/snapshots/${ticker}?${params.toString()}`;
-    const res = await fetch(url, { headers });
+    const res = await alpacaRead(url, { headers });
     if (!res.ok) {
       console.error(`[ALPACA] Snapshots fetch failed: ${res.status} ${res.statusText}`);
       break;
@@ -203,7 +229,7 @@ export async function fetchAlpacaATMStraddle(
     });
 
     const url = `${ALPACA_DATA_URL}/v1beta1/options/snapshots/${ticker}?${params.toString()}`;
-    const res = await fetch(url, { headers });
+    const res = await alpacaRead(url, { headers });
     if (!res.ok) continue;
 
     const data = await res.json();
@@ -236,7 +262,8 @@ export async function fetchAlpacaATMStraddle(
 }
 
 export function isAlpacaConfigured(): boolean {
-  return !!(process.env.ALPACA_API_KEY && process.env.ALPACA_API_SECRET);
+  return !!((process.env.ALPACA_DATA_KEY || process.env.ALPACA_API_KEY) &&
+            (process.env.ALPACA_DATA_SECRET || process.env.ALPACA_API_SECRET));
 }
 
 /**
@@ -247,11 +274,11 @@ export async function fetchAlpacaLatestPrice(ticker: string): Promise<number> {
   const headers = getHeaders();
   const url = `${ALPACA_DATA_URL}/v2/stocks/${ticker}/trades/latest`;
 
-  const res = await fetch(url, { headers });
+  const res = await alpacaRead(url, { headers });
   if (!res.ok) {
     // Try quotes endpoint as fallback
     const quoteUrl = `${ALPACA_DATA_URL}/v2/stocks/${ticker}/quotes/latest`;
-    const quoteRes = await fetch(quoteUrl, { headers });
+    const quoteRes = await alpacaRead(quoteUrl, { headers });
     if (!quoteRes.ok) return 0;
     const quoteData = await quoteRes.json();
     const bp = quoteData?.quote?.bp ?? 0;

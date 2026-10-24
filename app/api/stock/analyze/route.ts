@@ -133,15 +133,24 @@ const ALPACA_DATA_URL = 'https://data.alpaca.markets';
 
 function getAlpacaHeaders(): Record<string, string> {
   return {
-    'APCA-API-KEY-ID': process.env.ALPACA_API_KEY ?? '',
-    'APCA-API-SECRET-KEY': process.env.ALPACA_API_SECRET ?? '',
+    'APCA-API-KEY-ID': (process.env.ALPACA_DATA_KEY || process.env.ALPACA_API_KEY) ?? '',
+    'APCA-API-SECRET-KEY': (process.env.ALPACA_DATA_SECRET || process.env.ALPACA_API_SECRET) ?? '',
     'Accept': 'application/json',
   };
 }
 
+/** GET-only, market-data host only — see lib/alpaca-client.ts for why. */
+async function alpacaRead(url: string, init: RequestInit = {}): Promise<Response> {
+  const method = (init.method ?? 'GET').toUpperCase();
+  if (method !== 'GET' || new URL(url).hostname !== 'data.alpaca.markets') {
+    throw new Error(`blocked non-read-only Alpaca request: ${method} ${url}`);
+  }
+  return fetch(url, init);
+}
+
 async function fetchAlpacaSnapshot(ticker: string): Promise<any> {
   const headers = getAlpacaHeaders();
-  const res = await fetch(`${ALPACA_DATA_URL}/v2/stocks/${ticker}/snapshot?feed=iex`, { headers });
+  const res = await alpacaRead(`${ALPACA_DATA_URL}/v2/stocks/${ticker}/snapshot?feed=iex`, { headers });
   if (!res.ok) throw new Error(`Alpaca snapshot ${res.status}`);
   return await res.json();
 }
@@ -183,7 +192,7 @@ async function fetchAlpacaHistory(ticker: string, months: number = 6): Promise<A
     });
     if (pageToken) params.set('page_token', pageToken);
     
-    const res = await fetch(`${ALPACA_DATA_URL}/v2/stocks/${ticker}/bars?${params}`, { headers });
+    const res = await alpacaRead(`${ALPACA_DATA_URL}/v2/stocks/${ticker}/bars?${params}`, { headers });
     if (!res.ok) break;
     const data = await res.json();
     const bars = data?.bars ?? [];

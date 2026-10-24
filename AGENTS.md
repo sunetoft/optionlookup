@@ -43,7 +43,8 @@ and strikes must be OUTSIDE the Expected Move.
 | `DATABASE_URL` | SQLite path, e.g. `file:./dev.db` |
 | `NEXTAUTH_SECRET` | NextAuth session secret |
 | `NEXTAUTH_URL` | `https://optionlookup.bunnystocks.com` |
-| `ALPACA_API_KEY` / `ALPACA_API_SECRET` | Alpaca market data |
+| `ALPACA_API_KEY` / `ALPACA_API_SECRET` | Alpaca market data (fallback — see below) |
+| `ALPACA_DATA_KEY` / `ALPACA_DATA_SECRET` | **Preferred** for market data. Point these at a throwaway paper account; falls back to the pair above when unset. |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Stripe payments |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth |
 | `GMAIL_USER` / `GMAIL_APP_PASSWORD` | Email sending |
@@ -52,6 +53,29 @@ and strikes must be OUTSIDE the Expected Move.
 | `TRADESCOUTER_INTERNAL_URL` | `http://localhost:3013` |
 | `THEMEVALIDATOR_INTERNAL_URL` | `http://localhost:3001` |
 | `SCANNER_DISCORD_WEBHOOK_URL` | Discord webhook for CSP scanner notifications (optional — if unset, Discord notifications silently skipped) |
+
+## Alpaca credentials — data-only by construction
+
+Alpaca has **no scoped or read-only API keys for key pairs**: one pair carries full
+trading authority over its whole account (only OAuth tokens carry scopes, and those need
+an app registration + refresh cycle). This app only reads market data, and it used to hold
+the same pair Lumibot trades its paper book with. Containment, both in
+`lib/alpaca-client.ts` (and the failover client in `app/api/stock/analyze/route.ts`):
+
+1. **Dedicated pair first.** `ALPACA_DATA_KEY` / `ALPACA_DATA_SECRET` win over
+   `ALPACA_API_KEY` / `ALPACA_API_SECRET` — point them at a separate paper account.
+2. **Read-only guard.** Every Alpaca request goes through `alpacaRead()`, which throws
+   unless it is a **GET** against **data.alpaca.markets** — plus the one read-only trading
+   endpoint this app needs, `GET /v2/options/contracts` (expirations and strikes). It can
+   never place, cancel or modify an order.
+
+Verify a candidate pair before applying it (also checks that SIP entitlement carried over;
+an IEX-only account silently changes every indicator input):
+
+```bash
+python3 /Users/sune/projects/scripts/alpaca_data_keys.py --check
+python3 /Users/sune/projects/scripts/alpaca_data_keys.py --apply
+```
 
 ## Database
 
