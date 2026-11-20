@@ -3,13 +3,13 @@ export const dynamic = 'force-static'
 export async function GET() {
   const body = `# OptionLookup
 
-> Options wheel strategy analysis tool. Analyze covered calls, cash-secured puts, LEAPS, and call spread opportunities. Includes a multi-tenant CSP Scanner that finds cash-secured puts meeting ROI/price-target rules across user watchlists. Freemium: free tier with limited lookups, then subscription.
+> Options wheel strategy analysis tool. Analyze covered calls, cash-secured puts, LEAPS, and call spread opportunities. Includes a multi-tenant Wheel Scanner that finds BOTH legs of the wheel — cash-secured puts AND covered calls — meeting ROI/price-target rules across user watchlists. Freemium: free tier with limited lookups, then subscription.
 
 ## Key Pages
 - [Home](/) — landing page
 - [Dashboard](/dashboard) — main dashboard with search and on-demand analysis
-- [Scanner](/scanner) — CSP Scanner dashboard: watchlists of tickers with USD price targets; qualified cash-secured put contracts with ROI/day, DTE, implied volatility, and earnings warnings
-- [Scanner Heatmap](/scanner/heatmap) — admin-only market heatmap of the best CSP contracts across all users
+- [Scanner](/scanner) — Wheel Scanner dashboard: watchlists of tickers with USD price targets; qualified cash-secured puts AND covered calls with ROI/day, DTE, implied volatility, and earnings warnings
+- [Scanner Heatmap](/scanner/heatmap) — admin-only market heatmap of the best put + best call contracts across all users
 - [Account](/account) — user account and subscription management
 - [Pricing](/pricing) — subscription plans
 - [Login](/login) — sign in
